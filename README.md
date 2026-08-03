@@ -351,6 +351,14 @@ Around 69,000 entries become one, and matching gets faster.
 **Prefixes are merged.** `5.160.0.0/17` + `5.160.128.0/17` collapse to
 `5.160.0.0/16`. Malformed entries are dropped and counted.
 
+**Nothing is listed twice.** Domains are held in sets and IP prefixes are run
+through interval collapsing, so an exact duplicate cannot survive. The build
+then refuses to publish unless it can prove that, per file: no repeated
+domain, no prefix contained inside another, no domain already covered by a
+parent in the same set, no value appearing under two match types in a `.dat`
+category, nothing present in both `domain` and `domain_suffix` in a sing-box
+rule-set, and nothing listed as both `+.x` and `x` in a Clash provider.
+
 **Match types survive.** sing-box, Xray, Clash and Surge all distinguish exact,
 suffix, keyword and regex matches. Formats that cannot express one — hosts
 files, adlists — drop what they cannot represent and record the count, rather

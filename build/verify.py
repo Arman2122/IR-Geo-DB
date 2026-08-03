@@ -13,6 +13,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import os
+import re
 import subprocess
 import shutil
 import sys
@@ -89,13 +90,89 @@ def main() -> int:
         check(not any(ip in n for n in v4),
               f"{addr} ({who}) is NOT in the Iranian set")
 
-    # prefixes must be collapsed: no entry may contain another
-    overlaps = 0
-    ordered = sorted(v4)
-    for i in range(len(ordered) - 1):
-        if ordered[i].overlaps(ordered[i + 1]):
-            overlaps += 1
-    check(overlaps == 0, f"no overlapping IPv4 prefixes ({overlaps} found)")
+    # ------------------------------------------------- duplicates everywhere
+    # Collapsing is the definitive test for IP redundancy: if the count drops,
+    # something was a duplicate or contained inside another prefix. Comparing
+    # only adjacent pairs would miss a subnet separated from its supernet.
+    print("\nDuplicates and redundancy")
+    text_dir = os.path.join(dist, "text")
+    for fn in sorted(os.listdir(text_dir)):
+        if not re.search(r"-(ipv4|ipv6|all)\.txt$", fn):
+            continue
+        nets = load_cidrs(os.path.join(text_dir, fn))
+        if not nets:
+            continue
+        by_ver: dict[int, list] = {}
+        for n in nets:
+            by_ver.setdefault(n.version, []).append(n)
+        collapsed = sum(len(list(ipaddress.collapse_addresses(g)))
+                        for g in by_ver.values())
+        check(collapsed == len(nets),
+              f"text/{fn}: {len(nets)} prefixes, none redundant "
+              f"(collapses to {collapsed})")
+
+    for fn in sorted(os.listdir(text_dir)):
+        if not fn.endswith("-domains.txt"):
+            continue
+        lines = [l.strip() for l in open(os.path.join(text_dir, fn),
+                                         encoding="utf-8")
+                 if l.strip() and not l.startswith("#")]
+        check(len(lines) == len(set(lines)),
+              f"text/{fn}: {len(lines)} domains, no exact duplicates")
+        doms = set(lines)
+        covered = [d for d in doms
+                   if any(".".join(d.split(".")[i:]) in doms
+                          for i in range(1, len(d.split("."))))]
+        check(not covered,
+              f"text/{fn}: no domain covered by a parent already in the set "
+              f"({len(covered)} found)")
+
+    # A value must not appear twice in a category, nor under two match types
+    for fn in sorted(os.listdir(os.path.join(dist, "xray"))):
+        if not fn.endswith(".dat"):
+            continue
+        blob = open(os.path.join(dist, "xray", fn), "rb").read()
+        if fn.startswith("geoip"):
+            for cat in geodat.decode_geoip(blob):
+                strs = [str(n) for n in cat.networks]
+                check(len(strs) == len(set(strs)),
+                      f"xray/{fn} [{cat.code}]: no duplicate prefixes")
+        else:
+            for cat in geodat.decode_geosite(blob):
+                vals = [v for _t, v in cat.domains]
+                check(len(vals) == len(set(vals)),
+                      f"xray/{fn} [{cat.code}]: no value repeated "
+                      f"(across types or within one)")
+
+    # domain and domain_suffix are different matchers; the same name in both
+    # is a rule that can never add anything
+    srcdir = os.path.join(dist, "sing-box", "source")
+    for fn in sorted(os.listdir(srcdir)):
+        data = json.load(open(os.path.join(srcdir, fn), encoding="utf-8"))
+        for rule in data.get("rules", []):
+            for key, vals in rule.items():
+                if isinstance(vals, list):
+                    check(len(vals) == len(set(vals)),
+                          f"sing-box/source/{fn} [{key}]: no duplicates")
+            both = set(rule.get("domain", [])) & set(rule.get("domain_suffix", []))
+            check(not both,
+                  f"sing-box/source/{fn}: nothing in both domain and "
+                  f"domain_suffix ({len(both)} found)")
+
+    clash_dir = os.path.join(dist, "clash")
+    for fn in sorted(os.listdir(clash_dir)):
+        if not fn.endswith("-domain.list"):
+            continue
+        lines = [l.strip() for l in open(os.path.join(clash_dir, fn),
+                                         encoding="utf-8")
+                 if l.strip() and not l.startswith("#")]
+        check(len(lines) == len(set(lines)),
+              f"clash/{fn}: no duplicate lines")
+        both = {l[2:] for l in lines if l.startswith("+.")} & \
+               {l for l in lines if not l.startswith("+.")}
+        check(not both,
+              f"clash/{fn}: nothing listed as both '+.x' and 'x' "
+              f"({len(both)} found)")
 
     # ------------------------------------------------------------ Xray .dat
     print("\nXray data files")
