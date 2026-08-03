@@ -159,6 +159,21 @@ services behind a foreign CDN get caught, something no static IP list can do:
 /import file-name=ir-dns.rsc
 ```
 
+> **This one is big — check your device first.** `ir-dns.rsc` is ~62,000
+> static DNS entries and roughly 6 MB. That is fine on an RB5009, CCR or any
+> device with 512 MB+, but it will exhaust a hAP ax² / hEX / RB750 and can
+> take several minutes to import. On small hardware, skip it and use the IP
+> address-list alone, or use this single rule, which covers the entire `.ir`
+> TLD at no memory cost:
+>
+> ```
+> /ip dns static
+> add type=FWD regexp=".*\\.ir\$" forward-to=178.22.122.100 address-list=IR ttl=1d
+> ```
+>
+> The address-list files (`ir-ipv4.rsc`, ~1,700 entries) are small and safe
+> everywhere.
+
 Ad and threat blocking, RouterOS 7.15+:
 
 ```
@@ -309,6 +324,7 @@ as `8.8.8.8` turns up inside it.
 | [AdGuard DNS filter](https://github.com/AdguardTeam/AdGuardSDNSFilter) | AdGuard | GPL-3.0 | ads / tracking |
 | [URLhaus](https://urlhaus.abuse.ch) | abuse.ch | CC0 | malware |
 | [Feodo Tracker](https://feodotracker.abuse.ch/blocklist/) | abuse.ch | CC0 | botnet C2 IPs |
+
 | [Phishing.Database](https://github.com/mitchellkrogza/Phishing.Database) | mitchellkrogza | MIT | phishing |
 | [NoCoin](https://github.com/hoshsadiq/adblock-nocoin-list) | hoshsadiq | MIT | cryptominers |
 | [StevenBlack hosts](https://github.com/StevenBlack/hosts) | StevenBlack | MIT | adult / gambling |
@@ -316,6 +332,12 @@ as `8.8.8.8` turns up inside it.
 
 Found a missing Iranian domain or a false positive? Report it to the upstream
 source — fixing it there fixes it for everyone. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+**Set sizes vary a lot, and small does not mean broken.** `malware` and
+`cryptominers` are a few hundred entries each because their sources track
+*currently active* threats rather than accumulating history; Feodo Tracker's
+IP feed in particular is often only a handful of addresses. `ads`, `phishing`
+and `nsfw` are the large ones. Live counts are always in `stats.json`.
 
 ## Design notes
 
