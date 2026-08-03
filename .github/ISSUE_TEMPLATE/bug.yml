@@ -1,0 +1,31 @@
+name: Bug or format problem
+description: A build failure, a malformed output file, or a format a client rejects
+labels: ["bug"]
+body:
+  - type: input
+    id: file
+    attributes:
+      label: Which file
+      placeholder: "sing-box/rule-set/geoip-ir.srs"
+    validations:
+      required: true
+
+  - type: input
+    id: client
+    attributes:
+      label: Client and version
+      placeholder: "sing-box 1.11.3 / RouterOS 7.15 / mihomo 1.19.29"
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What happened
+      description: Include the exact error the client printed.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Release
+      placeholder: "v2026.08.03"

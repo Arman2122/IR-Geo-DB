@@ -1,5 +1,6 @@
 # build output — published to the dist branch and releases, never to main
 dist/
+release-assets/
 *.zip
 *.tar.gz
 NOTES.md

@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""
-geodat.py — read and write V2Ray/Xray ``geoip.dat`` and ``geosite.dat``.
+"""Read and write V2Ray/Xray geoip.dat and geosite.dat.
 
 Both files are bare protobuf: no length prefix, no compression, no framing.
-The schema lives in v2fly/v2ray-core ``app/router/routercommon/common.proto``
-and Xray-core mirrors it byte for byte:
+The schema is v2fly/v2ray-core app/router/routercommon/common.proto, which
+Xray-core mirrors:
 
     message CIDR      { bytes ip = 1; uint32 prefix = 2; }
     message GeoIP     { string country_code = 1; repeated CIDR cidr = 2;
@@ -19,17 +18,12 @@ and Xray-core mirrors it byte for byte:
                           bytes resource_hash = 3; string code = 4; }
     message GeoSiteList { repeated GeoSite entry = 1; }
 
-Category codes are written upper-cased. That is what
-v2fly/domain-list-community and Loyalsoldier/geoip emit, and what the
-``geosite:ir`` / ``geoip:ir`` lookups in both cores compare against.
+Category codes are upper-cased, matching what the official generators emit and
+what the geosite:/geoip: lookups compare against.
 
-Fields holding a proto3 default (``prefix = 0``, ``type = Plain``) are omitted
-rather than written as an explicit zero, so output is byte-identical to what
-the Go generators produce for the same input.
-
-No third-party dependencies — the slice of the wire format needed here is
-small enough to hand-roll, and vendoring `protobuf` for four messages is not
-worth the build-time cost.
+Fields holding a proto3 default (prefix = 0, type = Plain) are omitted rather
+than written as an explicit zero, which makes output byte-identical to the Go
+generators for the same input.
 """
 
 from __future__ import annotations
