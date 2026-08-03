@@ -23,6 +23,11 @@ Everything is built by GitHub Actions on a schedule. There is no server, no
 database and no state carried between runs: every build starts from the
 upstream sources and reproduces the whole tree.
 
+> **If you fork this:** GitHub disables scheduled workflows after 60 days with
+> no *human* repository activity — the build's own commits do not reset that
+> timer. Push something, or re-enable the workflow from the Actions tab, if
+> the daily build ever goes quiet.
+
 ## Download
 
 Two channels, both updated by the same daily build:
