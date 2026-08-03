@@ -1,24 +1,10 @@
 #!/usr/bin/env python3
-"""
-model.py — the normalised in-memory representation every emitter reads from.
+"""The normalised representation every emitter reads from.
 
-Two container types, ``IPSet`` and ``DomainSet``, plus the normalisation that
-turns messy upstream input into something worth shipping:
-
-* IP prefixes are parsed, de-duplicated and **collapsed** — ``5.160.0.0/17``
-  plus ``5.160.128.0/17`` becomes ``5.160.0.0/16``. Malformed entries are
-  dropped and counted rather than silently poisoning a router import.
-* Domains are lower-cased, stripped of stray dots and wildcards, and **pruned**
-  of redundant children: every consumer we emit for matches subdomains, so if
-  ``example.com`` is in the set then ``ads.example.com`` is dead weight.
-* ``collapse_tld("ir")`` replaces tens of thousands of individual ``.ir``
-  entries with the single suffix rule that covers all of them.
-
-Domain rules keep their match type. sing-box rule-sets distinguish exact
-matches, suffix matches, keywords and regexes, and formats that can express
-that distinction (Xray, sing-box, Clash, Surge) should not have it flattened
-away. Formats that cannot (hosts files, MikroTik adlists) drop what they
-cannot represent and report the count.
+IPSet and DomainSet, plus the normalisation that turns messy upstream input
+into something worth shipping: prefixes collapsed, malformed entries counted
+rather than passed through, redundant subdomains pruned, and match types
+preserved for the formats that can express them.
 """
 
 from __future__ import annotations
@@ -85,12 +71,10 @@ def make_ipset(slug: str, title: str, raw, sources: list[str]) -> IPSet:
 
 
 def range_to_cidrs(start: str, count: int) -> list:
-    """Convert a RIPE-style ``start address + address count`` into CIDRs.
+    """Convert a RIR-style start address plus host count into CIDRs.
 
-    The delegated-stats files give an inclusive host count, not a prefix
-    length, and the count is not always a single aligned block — 2.57.3.0
-    with 256 addresses is one /24, but a 1536-address range is a /23 plus a
-    /22. ``summarize_address_range`` handles both.
+    The count is an inclusive number of addresses, not a prefix length, and
+    is not always one aligned block: 1536 addresses is a /22 plus a /23.
     """
     first = ipaddress.ip_address(start)
     last = ipaddress.ip_address(int(first) + count - 1)
@@ -117,12 +101,11 @@ class DomainSet:
         return len(self.suffix) + len(self.full) + len(self.keyword) + len(self.regex)
 
     def plain_domains(self) -> list[str]:
-        """Suffix + full, sorted — for formats with no notion of match type.
+        """Suffix + full, for formats with no notion of match type.
 
-        hosts files, MikroTik adlists and AdGuard rules all treat a bare
-        domain as covering its subdomains anyway, so folding the two together
-        loses nothing for those consumers. Keywords and regexes are not
-        representable and are excluded; callers report the shortfall.
+        hosts files, adlists and AdGuard rules treat a bare domain as covering
+        its subdomains anyway. Keywords and regexes are not representable;
+        callers report the shortfall.
         """
         return sorted(self.suffix | self.full)
 
@@ -155,9 +138,8 @@ def clean_domain(name: str) -> str | None:
 def prune_covered(names: set[str]) -> tuple[list[str], int]:
     """Drop every domain whose parent is already in the set.
 
-    ``example.com`` present means ``ads.example.com`` will match anyway, in
-    every format emitted here. On real ad lists this removes a large fraction
-    of the entries, which is what makes the result fit on a router.
+    With example.com present, ads.example.com matches anyway in every format
+    emitted here.
     """
     kept = []
     for name in names:
@@ -226,11 +208,9 @@ def make_domainset(slug: str, title: str, *, suffix=(), full=(), keyword=(),
 
 
 def from_singbox_rules(rules: list) -> dict[str, set]:
-    """Flatten a decompiled sing-box rule-set into our four match buckets.
+    """Flatten a decompiled sing-box rule-set into the match buckets.
 
-    A headless rule-set is a list of rule objects, each of which may carry any
-    of ``domain`` / ``domain_suffix`` / ``domain_keyword`` / ``domain_regex`` /
-    ``ip_cidr``. Logical rules nest another list under ``rules``.
+    Logical rules nest another rule list under "rules".
     """
     out = {"domain": set(), "domain_suffix": set(), "domain_keyword": set(),
            "domain_regex": set(), "ip_cidr": set()}

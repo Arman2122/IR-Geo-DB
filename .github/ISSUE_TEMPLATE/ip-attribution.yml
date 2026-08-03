@@ -1,0 +1,48 @@
+name: IP attribution problem
+description: An IP prefix is in the wrong set, or missing from the Iranian set
+labels: ["ip-data"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        IP data comes from the Regional Internet Registries' delegation
+        records, so a genuine misattribution is either a registry error or a
+        parsing bug here.
+
+        Check first whether the address is in `ir-cdn` rather than `ir`. Those
+        are separate sets on purpose — `ir-cdn` carries ranges published by
+        Iranian CDN providers, and some of those are foreign edge nodes.
+
+  - type: input
+    id: prefix
+    attributes:
+      label: Prefix or address
+      placeholder: "5.160.0.0/16"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Problem
+      options:
+        - In the Iranian set but should not be
+        - Missing from the Iranian set but should be there
+        - In the wrong set (ir vs ir-cdn vs ir-full)
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: whois output, the RIR record, a traceroute — whatever shows it
+      render: shell
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Release
+      placeholder: "v2026.08.03"

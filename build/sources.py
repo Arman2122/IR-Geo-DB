@@ -1,39 +1,15 @@
 #!/usr/bin/env python3
-"""
-sources.py — where the data comes from, and how each feed is parsed.
+"""Where the data comes from, and how each feed is parsed.
 
-Everything is fetched straight from the primary publisher. Nothing here is
-second-hand: IP allocations come from the five Regional Internet Registries
-themselves, Iranian CDN ranges come from the Iranian CDNs, and each blocklist
-comes from the project that maintains it.
+Everything is fetched from the primary publisher. IP allocations come from the
+five Regional Internet Registries, Iranian CDN ranges from the Iranian CDNs,
+each blocklist from the project that maintains it.
 
-On what counts as an Iranian IP
--------------------------------
-The default ``ir`` set is **registry-authoritative**: an address is Iranian
-only if a RIR has delegated it to an organisation whose registered country is
-``IR``. That is the strongest definition available without a paid
-geolocation database, and it is the one that answers "is this actually hosted
-in Iran" rather than "does some database guess Iran".
+An address is Iranian only if a RIR delegated it to an organisation whose
+registered country is IR. ipverse and ipdeny are fetched purely to cross-check
+that parsing and never contribute addresses.
 
-Two deliberate consequences:
-
-* Iranian CDN providers publish edge ranges that are **not** in Iran —
-  ParsPack's list includes Leaseweb (``95.211.0.0/16``) and Vultr
-  (``45.77.0.0/16``) space, for example. Those ranges are therefore kept in a
-  separate ``ir-cdn`` set instead of being folded into ``ir``. Users who want
-  "everything that serves Iranian traffic" take ``ir-full``; users who want
-  "machines in Iran" take ``ir``.
-* Published ranges belonging to foreign clouds and CDNs are subtracted from
-  ``ir`` outright. In practice the overlap is near zero because those ranges
-  are registered to non-Iranian entities, but the subtraction is cheap and it
-  makes a whole class of mistake impossible rather than unlikely.
-
-Two independent RIR-derived lists (ipverse, ipdeny) are fetched purely to
-cross-check our own parsing. They never contribute addresses — a disagreement
-is reported in the audit, not silently merged in.
-
-Only the standard library is used, so a GitHub Actions runner needs nothing
-beyond the Python it already ships with.
+Standard library only — a GitHub Actions runner needs no install step.
 """
 
 from __future__ import annotations
@@ -210,11 +186,7 @@ BY_KEY = {s.key: s for s in SOURCES}
 
 
 def fetch(url: str, cache_dir: str | None = None, retries: int = 4) -> bytes:
-    """GET with retries and an optional on-disk cache.
-
-    The cache exists so a local run does not hammer five RIR mirrors on every
-    iteration; CI starts cold and always fetches fresh.
-    """
+    """GET with retries and an optional on-disk cache for local iteration."""
     cache_path = None
     if cache_dir:
         os.makedirs(cache_dir, exist_ok=True)
@@ -272,15 +244,11 @@ def parse_html_cidr(raw: bytes) -> list[str]:
 
 
 def parse_rir(raw: bytes, country: str = "IR") -> list[str]:
-    """Extract delegations for one country from a RIR delegated-stats file.
+    """Extract one country's delegations from a RIR delegated-stats file.
 
-    Line format is ``registry|cc|type|start|value|date|status[|opaque-id]``.
-    For IPv4 ``value`` is a *host count*, not a prefix length, and it is not
-    always an aligned power of two — 1536 addresses is a /23 plus a /22. For
-    IPv6 ``value`` is the prefix length.
-
-    Only ``allocated`` and ``assigned`` records count. ``reserved`` and
-    ``available`` are not delegated to anyone.
+    Lines are registry|cc|type|start|value|date|status[|opaque-id]. For IPv4
+    `value` is a host count, not a prefix length; for IPv6 it is the prefix
+    length. Only allocated and assigned records are delegated to anyone.
     """
     import ipaddress
 
@@ -357,10 +325,10 @@ def parse_domains(raw: bytes) -> list[str]:
 
 
 def parse_adblock(raw: bytes) -> list[str]:
-    """Take only plain ``||domain^`` rules.
+    """Take only plain ||domain^ rules.
 
-    Anything carrying options (``$third-party``), an exception (``@@``) or a
-    path is not a whole-domain block and must not be turned into one.
+    Anything with options ($third-party), an exception (@@) or a path is not a
+    whole-domain block and must not be turned into one.
     """
     out = []
     for line in _text(raw).splitlines():

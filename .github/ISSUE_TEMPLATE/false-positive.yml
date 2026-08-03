@@ -1,0 +1,46 @@
+name: False positive
+description: A legitimate domain is being blocked
+labels: ["false-positive"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This repository generates no domain lists of its own — every entry
+        comes from an upstream source. Reporting it upstream fixes it for
+        everyone using that list, and the next daily build picks the fix up
+        automatically.
+
+        | Set | Report to |
+        |---|---|
+        | `ads`, `ads-ir` | [PersianBlocker](https://github.com/MasterKia/PersianBlocker/issues) · [HaGeZi](https://github.com/hagezi/dns-blocklists/issues) · [AdGuard](https://github.com/AdguardTeam/AdGuardSDNSFilter/issues) |
+        | `malware` | [URLhaus](https://urlhaus.abuse.ch) |
+        | `phishing` | [Phishing.Database](https://github.com/mitchellkrogza/Phishing.Database/issues) |
+        | `cryptominers` | [NoCoin](https://github.com/hoshsadiq/adblock-nocoin-list/issues) |
+        | `nsfw` | [StevenBlack](https://github.com/StevenBlack/hosts/issues) |
+
+        Open an issue here only if the entry is absent upstream but present in
+        our output — that would be a bug in this build.
+
+  - type: input
+    id: domain
+    attributes:
+      label: Domain
+      placeholder: "example.com"
+    validations:
+      required: true
+
+  - type: input
+    id: set
+    attributes:
+      label: Which set contains it
+      placeholder: "ads"
+    validations:
+      required: true
+
+  - type: textarea
+    id: upstream
+    attributes:
+      label: Upstream check
+      description: Which upstream source did you check, and what did you find?
+    validations:
+      required: true

@@ -1,61 +1,56 @@
 <h1 align="center">IR-Geo-DB</h1>
 
 <p align="center">
-  <b>Iranian routing and filtering data, rebuilt daily, in every format your client actually speaks.</b>
+  Iranian routing and filtering data, rebuilt daily, in every format your client speaks.
 </p>
 
 <p align="center">
-  <a href="https://github.com/Arman2122/IR-Geo-DB/actions/workflows/build.yml"><img alt="Build" src="https://img.shields.io/github/actions/workflow/status/Arman2122/IR-Geo-DB/build.yml?branch=main&style=for-the-badge&logo=github"></a>
-  <a href="https://github.com/Arman2122/IR-Geo-DB/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/Arman2122/IR-Geo-DB?style=for-the-badge"></a>
-  <a href="https://github.com/Arman2122/IR-Geo-DB/releases/latest"><img alt="Date" src="https://img.shields.io/github/release-date/Arman2122/IR-Geo-DB?display_date=published_at&style=for-the-badge"></a>
-  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/Arman2122/IR-Geo-DB?style=for-the-badge&color=blue"></a>
+  <a href="https://github.com/Arman2122/IR-Geo-DB/actions/workflows/build.yml"><img alt="Build" src="https://img.shields.io/github/actions/workflow/status/Arman2122/IR-Geo-DB/build.yml?branch=main&style=flat-square&logo=github&label=daily%20build"></a>
+  <a href="https://github.com/Arman2122/IR-Geo-DB/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/Arman2122/IR-Geo-DB?style=flat-square&color=success"></a>
+  <a href="https://github.com/Arman2122/IR-Geo-DB/releases/latest"><img alt="Updated" src="https://img.shields.io/github/release-date/Arman2122/IR-Geo-DB?display_date=published_at&style=flat-square&label=updated"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/Arman2122/IR-Geo-DB?style=flat-square&color=blue"></a>
 </p>
 
 ---
 
-Most geo-data projects publish one format and leave you to convert. This one
-takes the same primary sources and emits **17 formats** — from Xray's binary
-`geoip.dat` down to an `nftables` set — so the same daily data lands in your
-proxy client, your DNS resolver and your router without a conversion step in
-between.
-
-Everything is built by GitHub Actions on a schedule. There is no server, no
-database and no state carried between runs: every build starts from the
-upstream sources and reproduces the whole tree.
-
-> **On the 60-day rule:** GitHub disables scheduled workflows in public repos
-> after 60 days with no repository activity. The daily commit this build
-> pushes to the `dist` branch is that activity, so the schedule sustains
-> itself — bot commits count, and long-running repos with this exact shape
-> confirm it. The case to watch is a build that *fails* 60 days running: it
-> pushes nothing, so nothing resets the timer. GitHub emails before disabling,
-> and `gh workflow enable build.yml` turns it back on.
+Xray, sing-box, Mihomo, MikroTik, dnsmasq, Unbound, AdGuard, Surge, nftables —
+one build, every format, updated every day. IP data comes from the Regional
+Internet Registries directly, not from a geolocation guess.
 
 ## Download
 
-Two channels, both updated by the same daily build:
+Every file is a **direct download**. Nothing is zipped — clients fetch a URL.
 
-| | URL | Use when |
-|---|---|---|
-| **Release** | `https://github.com/Arman2122/IR-Geo-DB/releases/latest/download/<file>` | You want a versioned, checksummed download |
-| **`dist` branch** | `https://raw.githubusercontent.com/Arman2122/IR-Geo-DB/dist/<path>` | Your device fetches by URL — **routers should use this** |
+Three mirrors, same content:
 
-> **Why routers need the branch:** release asset URLs redirect through
-> `objects.githubusercontent.com`. RouterOS `/tool fetch` and several embedded
-> HTTP clients do not reliably follow redirects. The branch gives a direct
-> `raw.githubusercontent.com` URL that always works.
+| Mirror | URL pattern |
+|---|---|
+| **Release** (versioned) | `https://github.com/Arman2122/IR-Geo-DB/releases/latest/download/<file>` |
+| **`dist` branch** | `https://raw.githubusercontent.com/Arman2122/IR-Geo-DB/dist/<path>` |
+| **jsDelivr CDN** | `https://cdn.jsdelivr.net/gh/Arman2122/IR-Geo-DB@dist/<path>` |
+
+`releases/latest/download/` always resolves to the newest build — the URL never
+changes, so you set it once.
+
+**From inside Iran**, prefer jsDelivr: `raw.githubusercontent.com` is commonly
+blocked. Files over 20 MB are not served by jsDelivr; use the release URL for
+`geosite.dat` and `geosite-security.dat`.
+
+**On a router**, prefer the `dist` branch. Release URLs redirect through
+`objects.githubusercontent.com` and RouterOS `/tool fetch` does not reliably
+follow redirects.
 
 ## Quick start
 
 <details open>
-<summary><b>Xray / v2ray</b> — <code>geoip.dat</code>, <code>geosite.dat</code></summary>
+<summary><b>Xray / v2ray</b></summary>
 
 ```bash
 curl -sfLO https://github.com/Arman2122/IR-Geo-DB/releases/latest/download/geoip.dat
 curl -sfLO https://github.com/Arman2122/IR-Geo-DB/releases/latest/download/geosite.dat
 ```
 
-Drop both next to the core binary (or in its asset directory), then:
+Put both next to the core binary or in its asset directory.
 
 ```json
 "routing": {
@@ -71,12 +66,13 @@ Drop both next to the core binary (or in its asset directory), then:
 }
 ```
 
-`geoip-lite.dat` and `geosite-lite.dat` carry only the Iranian sets — use them
-on phones where the full files are more than you need.
+`geosite:category-ads-all` works too, as an alias for existing configs.
+
+On phones, `geoip-lite.dat` and `geosite-lite.dat` carry only the Iranian sets.
 </details>
 
 <details>
-<summary><b>sing-box</b> — remote <code>.srs</code> rule-sets</summary>
+<summary><b>sing-box</b></summary>
 
 ```json
 "route": {
@@ -95,12 +91,12 @@ on phones where the full files are more than you need.
 }
 ```
 
-The JSON sources the `.srs` files are compiled from are in
-`sing-box/source/`, if you would rather compile them yourself.
+Rule-sets are compiled at format version 1, so they load on sing-box 1.8 and
+later. The JSON sources are in `sing-box/source/`.
 </details>
 
 <details>
-<summary><b>Mihomo / Clash.Meta</b> — <code>.mrs</code> rule-providers</summary>
+<summary><b>Mihomo / Clash.Meta</b></summary>
 
 ```yaml
 rule-providers:
@@ -125,14 +121,14 @@ rules:
   - MATCH,PROXY
 ```
 
-Older clients without `.mrs` support can use the YAML providers in `clash/`
-with `format: yaml`.
+Clients without `.mrs` support can use the YAML providers in `clash/` with
+`format: yaml`.
 </details>
 
 <details>
-<summary><b>MikroTik RouterOS</b> — address-lists, split DNS, adlists</summary>
+<summary><b>MikroTik RouterOS</b></summary>
 
-**Iranian IP address-list**
+Address-list:
 
 ```
 /tool fetch mode=https dst-path=ir.rsc \
@@ -140,12 +136,12 @@ with `format: yaml`.
 /import file-name=ir.rsc
 ```
 
-The `-reset` variant removes only `dynamic=no` entries first, so it replaces
-the static geo data and leaves DNS-populated dynamic entries alone. Use
-`ir-ipv4.rsc` to append instead.
+`-reset` removes only `dynamic=no` entries first, replacing the static geo data
+while leaving DNS-populated dynamic entries alone. `ir-ipv4.rsc` appends
+instead.
 
-**Self-updating** — paste once and it maintains itself, with a size guard so a
-truncated download cannot wipe your list:
+Self-updating — paste once, it maintains itself and refuses to import a
+truncated download:
 
 ```
 /tool fetch mode=https dst-path=setup.rsc \
@@ -153,10 +149,9 @@ truncated download cannot wipe your list:
 /import file-name=setup.rsc
 ```
 
-**Iranian domains → split DNS.** Each entry forwards the domain to an Iranian
-resolver *and* writes every resolved address into the `IR` address list. That
-is what catches Iranian services sitting behind a foreign CDN — an IP list
-alone never can.
+Split DNS. Each entry forwards the domain to an Iranian resolver *and* writes
+every resolved address into the `IR` address list — which is how Iranian
+services behind a foreign CDN get caught, something no static IP list can do:
 
 ```
 /tool fetch mode=https dst-path=ir-dns.rsc \
@@ -164,28 +159,27 @@ alone never can.
 /import file-name=ir-dns.rsc
 ```
 
-**Ad and threat blocking** (RouterOS 7.15+):
+Ad and threat blocking, RouterOS 7.15+:
 
 ```
 /ip dns adlist add ssl-verify=yes \
   url="https://raw.githubusercontent.com/Arman2122/IR-Geo-DB/dist/mikrotik/adlist-block-all.txt"
 ```
 
-> **Watch RAM on small devices.** `adlist-block-all.txt` is over half a million
-> domains. On an hAP ax² or similar, start with `adlist-malware.txt` and
-> `adlist-phishing.txt` — small, high value — and add ads only if
-> `/system resource print` says you have room.
+`adlist-block-all.txt` is over half a million domains. On small devices start
+with `adlist-malware.txt` and `adlist-phishing.txt`, then check
+`/system resource print` before adding ads.
 </details>
 
 <details>
-<summary><b>DNS servers</b> — dnsmasq, Unbound, AdGuard Home, SmartDNS, RPZ</summary>
+<summary><b>DNS servers</b></summary>
 
 ```bash
 # dnsmasq — sinkhole
 curl -sfL -o /etc/dnsmasq.d/block.conf \
   https://raw.githubusercontent.com/Arman2122/IR-Geo-DB/dist/dnsmasq/block-all-block.conf
 
-# dnsmasq — send Iranian domains to an Iranian resolver
+# dnsmasq — Iranian domains to an Iranian resolver
 curl -sfL -o /etc/dnsmasq.d/ir.conf \
   https://raw.githubusercontent.com/Arman2122/IR-Geo-DB/dist/dnsmasq/ir-route.conf
 
@@ -194,103 +188,113 @@ curl -sfL -o /etc/unbound/unbound.conf.d/ir.conf \
   https://raw.githubusercontent.com/Arman2122/IR-Geo-DB/dist/unbound/ir-route.conf
 ```
 
-**AdGuard Home** — Filters → DNS blocklists → add
-`.../dist/adguard/block-all.txt`.
+**AdGuard Home** — Filters → DNS blocklists → add `.../dist/adguard/block-all.txt`.
 
 **BIND / Knot / PowerDNS** — the `rpz/` zones return NXDOMAIN and load as a
 standard response policy zone.
+
+**SmartDNS** — `smartdns/` has both blocking and group-routing configs.
 </details>
 
 <details>
-<summary><b>Firewalls</b> — nftables, ipset, pfSense, WireGuard</summary>
+<summary><b>Firewalls</b></summary>
 
 ```bash
 # nftables
 curl -sfL https://raw.githubusercontent.com/Arman2122/IR-Geo-DB/dist/nftables/ir.nft \
   -o /etc/nftables.d/ir.nft && nft -f /etc/nftables.d/ir.nft
 
-# ipset (iptables)
+# ipset / iptables
 curl -sfL https://raw.githubusercontent.com/Arman2122/IR-Geo-DB/dist/ipset/ir.ipset | ipset restore
 ```
 
-**pfSense / OPNsense** — Firewall → Aliases → type *URL Table (IPs)*, point at
+**pfSense / OPNsense** — Firewall → Aliases → *URL Table (IPs)* → point at
 `.../dist/text/ir-ipv4.txt`, refresh daily.
 
-**WireGuard split tunnelling** — `wireguard/ir-allowedips.conf` is a ready
-`AllowedIPs =` line.
+**WireGuard** — `wireguard/ir-allowedips.conf` is a ready `AllowedIPs =` line
+for split tunnelling.
 </details>
 
 <details>
 <summary><b>Surge, Loon, Quantumult X, Shadowrocket</b></summary>
 
-Surge rule list and `DOMAIN-SET` files are in `surge/`; Quantumult X filters
-with policies already attached are in `quantumultx/`.
-
 ```
-# Surge
 [Rule]
 RULE-SET,https://raw.githubusercontent.com/Arman2122/IR-Geo-DB/dist/surge/ir-domain.list,DIRECT
 RULE-SET,https://raw.githubusercontent.com/Arman2122/IR-Geo-DB/dist/surge/ir-ip.list,DIRECT
 ```
+
+`surge/*-domainset.txt` are `DOMAIN-SET` files. Quantumult X filters in
+`quantumultx/` ship with policies already attached.
 </details>
+
+## Sets
+
+**IP** — `ir` · `ir-cdn` · `ir-full` · `private` · `malware` · `phishing`
+**Domain** — `ir` · `ads` · `ads-ir` · `malware` · `phishing` · `cryptominers` · `nsfw` · `block-all`
+
+`geoip:` and `geosite:` are separate namespaces, so `geoip:malware` (C2
+addresses) and `geosite:malware` (malware domains) are different sets that
+share a name on purpose.
+
+Live counts for the current build are in
+[`stats.json`](https://github.com/Arman2122/IR-Geo-DB/releases/latest/download/stats.json).
 
 ## Formats
 
-| Directory | Format | Sets |
-|---|---|---|
-| `xray/` | `geoip.dat`, `geosite.dat` (+ lite, security) | all |
-| `sing-box/` | compiled `.srs` + JSON sources | all |
-| `mihomo/` | compiled `.mrs` | all |
-| `clash/` | rule-provider YAML, `.list`, classical | all |
-| `mikrotik/` | `.rsc` address-lists, DNS scripts, adlists | all |
-| `dnsmasq/` | `server=/…/` routing, `address=/…/` sinkhole | domains |
-| `unbound/` | forward-zones, `always_nxdomain` zones | domains |
-| `smartdns/` | nameserver groups, `address /…/#` | domains |
-| `adguard/` | `\|\|domain^` filter syntax | block sets |
-| `hosts/` | `0.0.0.0 domain` | block sets |
-| `rpz/` | BIND response policy zones | block sets |
-| `ipset/` | `ipset restore` | IP sets |
-| `nftables/` | `nft` interval sets | IP sets |
-| `wireguard/` | `AllowedIPs =` | IP sets |
-| `surge/` | rule list + `DOMAIN-SET` | all |
-| `quantumultx/` | filters with policies | all |
-| `text/` | plain CIDR / domain per line | all |
+| Directory | Format |
+|---|---|
+| `xray/` | `geoip.dat`, `geosite.dat`, lite and security variants |
+| `sing-box/` | compiled `.srs` + JSON sources |
+| `mihomo/` | compiled `.mrs` |
+| `clash/` | rule-provider YAML, `.list`, classical |
+| `mikrotik/` | `.rsc` address-lists, DNS scripts, adlists |
+| `dnsmasq/` | `server=/…/` routing, `address=/…/` sinkhole |
+| `unbound/` | forward-zones, `always_nxdomain` zones |
+| `smartdns/` | nameserver groups, `address /…/#` |
+| `adguard/` | `\|\|domain^` filter syntax |
+| `hosts/` | `0.0.0.0 domain` |
+| `rpz/` | BIND response policy zones |
+| `ipset/` | `ipset restore` |
+| `nftables/` | `nft` interval sets |
+| `wireguard/` | `AllowedIPs =` |
+| `surge/` | rule list + `DOMAIN-SET` |
+| `quantumultx/` | filters with policies |
+| `text/` | plain CIDR / domain per line |
 
-Sets above 100,000 entries skip the most verbose formats (RPZ writes two lines
-per domain, Unbound writes a stanza). The `manifest.json` records which
-profile each set used.
+Sets past 100,000 entries skip the most verbose formats — RPZ writes two lines
+per domain, Unbound a stanza each. `manifest.json` records which profile each
+set used.
 
-## Data sources
+## How an address is decided to be Iranian
 
-### How an address is decided to be Iranian
+From registry delegation records, not geolocation. An address is in `ir` only
+if a Regional Internet Registry delegated it to an organisation whose
+registered country is `IR`. All five RIRs are read, since an Iranian
+organisation can hold space from any of them.
 
-**Registry delegation records, not geolocation guessing.** An address is in
-the `ir` set only if a Regional Internet Registry has delegated it to an
-organisation whose registered country is `IR`. All five RIRs are read, because
-an Iranian organisation can hold space from any of them.
+Three consequences, all deliberate:
 
-Three things follow from that choice, and they are deliberate:
+**Iranian CDN ranges are separate.** ParsPack's published CDN list includes
+Leaseweb and Vultr space; ArvanCloud's includes foreign edge nodes. Those ship
+as `ir-cdn`. `ir-full` is the union, for "everything serving Iranian traffic"
+rather than "machines in Iran".
 
-1. **Iranian CDN ranges are published separately.** ParsPack's published CDN
-   list includes Leaseweb and Vultr space; ArvanCloud's includes foreign edge
-   nodes. Folding those into `ir` would mean claiming Amsterdam is in Iran.
-   They ship as **`ir-cdn`**, and **`ir-full`** is the union if you want
-   "everything serving Iranian traffic" rather than "machines in Iran".
-2. **Foreign cloud ranges are subtracted.** Cloudflare, AWS, Google, Fastly
-   and G-Core publish their own prefixes; any overlap is removed from `ir`.
-   In practice this is near zero — which is the point: it makes a whole class
-   of error impossible instead of merely unlikely.
-3. **Every build is cross-checked.** The result is compared against
-   [ipverse](https://github.com/ipverse/rir-ip) and
-   [ipdeny](https://www.ipdeny.com) — two independent parses of the same
-   registry data. The agreement figure is printed in every release note. A
-   disagreement is reported, never silently merged in.
+**Foreign cloud ranges are subtracted.** Cloudflare, AWS, Google, Fastly and
+G-Core publish their own prefixes; any overlap is removed from `ir`. In
+practice this is near zero, which is the point — it makes a class of error
+impossible rather than unlikely.
 
-The build also refuses to publish if the Iranian set falls below sane
-thresholds, if a long-standing Iranian block goes missing, or if a
-known-foreign address such as `8.8.8.8` turns up inside it.
+**Every build is cross-checked** against [ipverse](https://github.com/ipverse/rir-ip)
+and [ipdeny](https://www.ipdeny.com), two independent parses of the same
+registry data. The agreement figure appears in every release note. A
+disagreement is reported, never silently merged in.
 
-### Upstream
+The build refuses to publish if the Iranian set falls below sane thresholds, if
+a long-standing Iranian block goes missing, or if a known-foreign address such
+as `8.8.8.8` turns up inside it.
+
+## Sources
 
 | Source | Maintainer | License | Provides |
 |---|---|---|---|
@@ -310,43 +314,28 @@ known-foreign address such as `8.8.8.8` turns up inside it.
 | [StevenBlack hosts](https://github.com/StevenBlack/hosts) | StevenBlack | MIT | adult / gambling |
 | Cloudflare, AWS, Google, Fastly, G-Core | respective owners | — | exclusion lists |
 
-Found an Iranian domain that should be listed, or a false positive? Report it
-to the upstream source above — fixing it there fixes it for everyone, not just
-here.
-
-## Sets
-
-**IP** — `ir`, `ir-cdn`, `ir-full`, `private`, `malware`, `phishing`
-**Domain** — `ir`, `ads`, `ads-ir`, `malware`, `phishing`, `cryptominers`, `nsfw`, `block-all`
-
-`geoip:` and `geosite:` are separate namespaces, so `geoip:malware` (C2
-addresses) and `geosite:malware` (malware domains) are different sets with the
-same name, on purpose.
+Found a missing Iranian domain or a false positive? Report it to the upstream
+source — fixing it there fixes it for everyone. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Design notes
 
-**`.ir` collapses to one rule.** Every consumer here matches subdomains, so
-the whole `.ir` TLD is a single suffix entry instead of tens of thousands of
-individual names. Roughly 69,000 entries become one, and matching gets faster
-rather than slower.
+**`.ir` collapses to one rule.** Every consumer here matches subdomains, so the
+whole TLD is a single suffix entry instead of tens of thousands of names.
+Around 69,000 entries become one, and matching gets faster.
 
-**Redundant subdomains are pruned.** If `example.com` is in a set then
-`ads.example.com` is dead weight. On real ad lists this removes a meaningful
-fraction of the entries, which is what makes them fit on a router.
+**Redundant subdomains are pruned.** If `example.com` is in a set,
+`ads.example.com` is dead weight.
 
 **Prefixes are merged.** `5.160.0.0/17` + `5.160.128.0/17` collapse to
-`5.160.0.0/16`. Malformed entries are dropped and counted, never passed
-through.
+`5.160.0.0/16`. Malformed entries are dropped and counted.
 
-**Match types survive.** sing-box distinguishes exact, suffix, keyword and
-regex matches; so do Xray, Clash and Surge. Formats that cannot express a
-match type — hosts files, MikroTik adlists — drop what they cannot represent
-and record the count in the manifest, rather than silently emitting a rule
-that means something else.
+**Match types survive.** sing-box, Xray, Clash and Surge all distinguish exact,
+suffix, keyword and regex matches. Formats that cannot express one — hosts
+files, adlists — drop what they cannot represent and record the count, rather
+than emitting a rule that means something else.
 
-**Builds fail loudly.** If a source is truncated, if the Iranian prefix count
-collapses, or if verification fails, the job aborts and publishes nothing. A
-bad upstream day cannot push a broken list to your router.
+**Builds fail loudly.** A truncated source, a collapsed prefix count or a
+failed verification aborts the run and publishes nothing.
 
 ## Building it yourself
 
@@ -356,30 +345,33 @@ python3 build/build.py --outdir dist --cache .cache
 python3 build/verify.py dist
 ```
 
-Python 3.10+ and nothing else. `sing-box` and `mihomo` on `PATH` (or via
+Python 3.10+, standard library only. `sing-box` and `mihomo` on `PATH` (or via
 `$SING_BOX` / `$MIHOMO`) add the `.srs` and `.mrs` outputs; without them
-everything else still builds and the run reports what it skipped.
+everything else still builds.
 
 ```
-build/geodat.py         Xray .dat protobuf reader/writer  (self-test: run it directly)
+build/geodat.py         Xray .dat protobuf reader/writer
 build/model.py          normalisation — merging, pruning, match types
 build/sources.py        source registry and per-feed parsers
 build/emitters.py       one function per output format
 build/build.py          orchestration
 build/verify.py         post-build acceptance checks
-build/release_notes.py  release note rendering
+build/test_units.py     offline unit tests
 ```
+
+## Branches
+
+| Branch | Contents |
+|---|---|
+| `main` | source — the build scripts and workflows |
+| `dist` | build output, force-pushed daily, no source history |
 
 ## License
 
-This project is licensed under the **GNU GPLv3** — see [LICENSE](LICENSE).
-
-All upstream sources remain under their own licenses, listed in the table
-above. This repository redistributes their data in converted form.
+[GNU GPLv3](LICENSE). Upstream sources keep their own licenses, listed above.
 
 ## Disclaimer
 
-Not affiliated with, endorsed by, or connected to any of the services,
-registries or projects referenced here. The data is gathered from publicly
-available sources and provided as-is, with no guarantee of accuracy or
-availability. Verify before you depend on it.
+Not affiliated with or endorsed by any service, registry or project referenced
+here. Data comes from publicly available sources and is provided as-is, with no
+guarantee of accuracy or availability.

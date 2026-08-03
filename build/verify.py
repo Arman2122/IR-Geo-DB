@@ -1,15 +1,11 @@
 #!/usr/bin/env python3
-"""
-verify.py — post-build acceptance checks against a produced dist/ tree.
+"""Post-build acceptance checks against a produced dist/ tree.
 
     python3 build/verify.py dist
 
-This is deliberately separate from the sanity gate inside build.py. That gate
-asks "did the data look sane before we wrote it"; this asks "is what we
-actually wrote correct and loadable". It re-reads the files from disk, decodes
-the binary formats, and checks known-good and known-bad addresses.
-
-Exit code is non-zero if any check fails, so CI can gate a release on it.
+Separate from the sanity gate in build.py: that one asks whether the data
+looked sane before writing, this re-reads the files from disk and decodes the
+binary formats to check what actually got written. Non-zero exit on failure.
 """
 
 from __future__ import annotations

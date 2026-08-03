@@ -127,20 +127,15 @@ jobs:
             gh release delete "$VERSION" --yes --cleanup-tag
             sleep 5
           fi
+          # Loose files, not archives: v2ray, sing-box, mihomo and RouterOS
+          # all fetch a single file by URL and cannot open a zip.
+          echo "uploading $(ls release-assets | wc -l) assets"
           gh release create "$VERSION" \
             --title "$VERSION" \
             --notes-file NOTES.md \
             --latest \
-            xray.zip sing-box.zip mihomo.zip mikrotik.zip \
-            dns.zip firewall.zip surge.zip \
-            "ir-geo-db-${VERSION}.zip" \
-            dist/SHA256SUMS \
-            dist/stats.json \
-            dist/xray/geoip.dat \
-            dist/xray/geosite.dat \
-            dist/xray/geoip-lite.dat \
-            dist/xray/geosite-lite.dat \
-            dist/xray/geosite-security.dat
+            release-assets/* \
+            "ir-geo-db-${VERSION}.zip"
 
       - name: Push dist branch
         if: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}
@@ -159,6 +154,35 @@ jobs:
           git commit -q -m "build $VERSION (${{ steps.meta.outputs.date }})"
           git branch -M dist
           git push -f origin dist
+
+      # jsDelivr caches branch refs, so a force-push to dist can keep serving
+      # yesterday's file. Purging the paths people actually fetch keeps the
+      # CDN honest — it matters because raw.githubusercontent.com is widely
+      # blocked from Iran and the CDN is the working mirror.
+      - name: Purge jsDelivr cache
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}
+        continue-on-error: true
+        run: |
+          purge() {
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 \
+              "https://purge.jsdelivr.net/gh/${GITHUB_REPOSITORY}@dist/$1" || true)
+            echo "  $code  $1"
+          }
+          for f in xray/geoip.dat xray/geoip-lite.dat xray/geosite-lite.dat \
+                   manifest.json stats.json SHA256SUMS; do purge "$f"; done
+          for s in ir ads ads-ir malware phishing cryptominers nsfw; do
+            purge "sing-box/rule-set/geosite-${s}.srs"
+            purge "mihomo/${s}-domain.mrs"
+          done
+          for s in ir ir-cdn ir-full private malware phishing; do
+            purge "sing-box/rule-set/geoip-${s}.srs"
+            purge "mihomo/${s}-ip.mrs"
+            purge "text/${s}-ipv4.txt"
+          done
+          for f in ir-ipv4-reset.rsc ir-ipv4.rsc ir-ipv6-reset.rsc \
+                   ir-dns.rsc auto-update.rsc adlist-block-all.txt; do
+            purge "mikrotik/$f"
+          done
 
       - name: Prune old releases
         if: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}

@@ -1,31 +1,23 @@
 #!/usr/bin/env python3
-"""
-emitters.py — one function per output format.
+"""One function per output format.
 
-Every emitter takes a normalised ``IPSet`` or ``DomainSet`` plus a
-``BuildContext`` and writes files under ``ctx.outdir``, recording each one in
-the manifest. Emitters never mutate the dataset.
+Each emitter takes a normalised IPSet or DomainSet plus a BuildContext, writes
+files under ctx.outdir, and records them in the manifest. Emitters never
+mutate the dataset.
 
-A dataset carries a *role* which decides intent, because the same domain list
-means different things in different places:
-
+A dataset's *role* decides intent:
     direct  Iranian services — route directly, resolve with an Iranian DNS
     block   ads / malware / phishing / cryptominers / nsfw — sinkhole
     proxy   sites that block Iran — force through the proxy
-    plain   reference data (private ranges, CDN ranges) — lists only
+    plain   reference data — lists only
 
-Formats that cannot represent a match type drop what they cannot express and
-the count is reported, rather than silently emitting something that means
-something else.
-
-Match-type equivalence used throughout (verified against each implementation):
-
-    our `suffix`   == Xray `domain:x`      == sing-box `domain_suffix: x`
-                   == Clash `+.x`          == Surge `DOMAIN-SUFFIX,x`
-    our `full`     == Xray `full:x`        == sing-box `domain: x`
-                   == Clash `x`            == Surge `DOMAIN,x`
-    our `keyword`  == Xray `keyword:x`     == sing-box `domain_keyword`
-    our `regex`    == Xray `regexp:x`      == sing-box `domain_regex`
+Match-type equivalence, verified against each implementation:
+    suffix  == Xray `domain:x`  == sing-box `domain_suffix: x`
+            == Clash `+.x`      == Surge `DOMAIN-SUFFIX,x`
+    full    == Xray `full:x`    == sing-box `domain: x`
+            == Clash `x`        == Surge `DOMAIN,x`
+    keyword == Xray `keyword:x` == sing-box `domain_keyword`
+    regex   == Xray `regexp:x`  == sing-box `domain_regex`
 """
 
 from __future__ import annotations
@@ -44,8 +36,8 @@ class BuildContext:
     outdir: str
     timestamp: str
     version: str
-    resolver: str = "178.22.122.100"          # Shecan, an Iranian resolver
-    resolver_alt: str = "10.202.10.10"        # Radar
+    resolver: str = "178.22.122.100"
+    resolver_alt: str = "10.202.10.10"
     manifest: list = field(default_factory=list)
 
     def path(self, relpath: str) -> str:
@@ -59,12 +51,11 @@ class BuildContext:
 
 
 def header(ctx: BuildContext, title: str, count: int, sources, comment="#") -> str:
-    src = ", ".join(sources) if sources else "n/a"
     lines = [
-        f"{title}",
+        title,
         f"Entries: {count}",
         f"Built:   {ctx.timestamp}   Release: {ctx.version}",
-        f"Sources: {src}",
+        f"Sources: {', '.join(sources) if sources else 'n/a'}",
         f"Project: {PROJECT}",
     ]
     return "".join(f"{comment} {ln}\n" for ln in lines) + comment + "\n"
@@ -73,7 +64,7 @@ def header(ctx: BuildContext, title: str, count: int, sources, comment="#") -> s
 def write_lines(ctx: BuildContext, relpath: str, lines, title: str, count: int,
                 sources, comment="#", note="") -> None:
     body = header(ctx, title, count, sources, comment) + "\n".join(lines)
-    if body and not body.endswith("\n"):
+    if not body.endswith("\n"):
         body += "\n"
     with open(ctx.path(relpath), "w", encoding="utf-8", newline="\n") as fh:
         fh.write(body)
@@ -87,11 +78,11 @@ def write_json(ctx: BuildContext, relpath: str, obj, count: int, note="") -> Non
     ctx.record(relpath, count, note)
 
 
-# =============================================================== IP emitters
+# ------------------------------------------------------------------ IP sets
 
 
 def ip_text(ctx: BuildContext, s: IPSet) -> None:
-    """Plain CIDR per line. Also the pfSense/OPNsense URL-table format."""
+    """Plain CIDR per line; also the pfSense/OPNsense URL-table format."""
     if s.v4:
         write_lines(ctx, f"text/{s.slug}-ipv4.txt", [str(n) for n in s.v4],
                     f"{s.title} — IPv4 CIDR", len(s.v4), s.sources)
@@ -104,12 +95,6 @@ def ip_text(ctx: BuildContext, s: IPSet) -> None:
 
 
 def ip_mikrotik(ctx: BuildContext, s: IPSet) -> None:
-    """RouterOS address-lists, in append and replace variants.
-
-    The ``-reset`` file removes only ``dynamic=no`` entries first, so a
-    re-import replaces the static geo data while leaving entries that DNS
-    static rules populated dynamically untouched.
-    """
     listname = s.slug.upper().replace("-", "_")
     for ver, nets, root in (("ipv4", s.v4, "/ip"), ("ipv6", s.v6, "/ipv6")):
         if not nets:
@@ -119,6 +104,7 @@ def ip_mikrotik(ctx: BuildContext, s: IPSet) -> None:
                     [f"{root} firewall address-list"] + adds,
                     f"{s.title} — RouterOS {ver} address-list {listname} (append)",
                     len(nets), s.sources)
+        # removing only dynamic=no leaves DNS-populated entries intact
         write_lines(ctx, f"mikrotik/{s.slug}-{ver}-reset.rsc",
                     [f"{root} firewall address-list",
                      f"remove [find list={listname} dynamic=no]"] + adds,
@@ -127,22 +113,20 @@ def ip_mikrotik(ctx: BuildContext, s: IPSet) -> None:
 
 
 def ip_ipset(ctx: BuildContext, s: IPSet) -> None:
-    """``ipset restore`` input — covers iptables users."""
     lines = []
     if s.v4:
-        lines.append(f"create {s.slug}-v4 hash:net family inet -exist")
-        lines.append(f"flush {s.slug}-v4")
+        lines += [f"create {s.slug}-v4 hash:net family inet -exist",
+                  f"flush {s.slug}-v4"]
         lines += [f"add {s.slug}-v4 {n} -exist" for n in s.v4]
     if s.v6:
-        lines.append(f"create {s.slug}-v6 hash:net family inet6 -exist")
-        lines.append(f"flush {s.slug}-v6")
+        lines += [f"create {s.slug}-v6 hash:net family inet6 -exist",
+                  f"flush {s.slug}-v6"]
         lines += [f"add {s.slug}-v6 {n} -exist" for n in s.v6]
     write_lines(ctx, f"ipset/{s.slug}.ipset", lines,
                 f"{s.title} — ipset restore", s.total, s.sources)
 
 
 def _nft_elements(nets, indent="      ") -> list[str]:
-    """Wrap a big element list; one very long line is legal but unreadable."""
     out, row = [], []
     for n in nets:
         row.append(str(n))
@@ -172,11 +156,7 @@ def ip_nftables(ctx: BuildContext, s: IPSet) -> None:
 
 
 def ip_clash(ctx: BuildContext, s: IPSet) -> None:
-    """Clash / Mihomo ipcidr rule-provider, yaml and text payloads.
-
-    The ``.list`` text form is also what ``mihomo convert-ruleset`` compiles
-    into ``.mrs``.
-    """
+    """Clash/Mihomo ipcidr provider. The .list form is what compiles to .mrs."""
     nets = [str(n) for n in s.all_networks()]
     write_lines(ctx, f"clash/{s.slug}-ip.yaml",
                 ["payload:"] + [f"  - '{n}'" for n in nets],
@@ -187,9 +167,10 @@ def ip_clash(ctx: BuildContext, s: IPSet) -> None:
 
 
 def ip_singbox_source(ctx: BuildContext, s: IPSet) -> None:
-    """sing-box headless rule-set source, compiled to .srs by the build."""
-    obj = {"version": 1, "rules": [{"ip_cidr": [str(n) for n in s.all_networks()]}]}
-    write_json(ctx, f"sing-box/source/geoip-{s.slug}.json", obj, s.total)
+    write_json(ctx, f"sing-box/source/geoip-{s.slug}.json",
+               {"version": 1,
+                "rules": [{"ip_cidr": [str(n) for n in s.all_networks()]}]},
+               s.total)
 
 
 def ip_surge(ctx: BuildContext, s: IPSet, role: str) -> None:
@@ -205,7 +186,6 @@ def ip_surge(ctx: BuildContext, s: IPSet, role: str) -> None:
 
 
 def ip_wireguard(ctx: BuildContext, s: IPSet) -> None:
-    """A single AllowedIPs value — split tunnelling straight into wg-quick."""
     nets = ", ".join(str(n) for n in s.all_networks())
     write_lines(ctx, f"wireguard/{s.slug}-allowedips.conf",
                 [f"AllowedIPs = {nets}"],
@@ -224,7 +204,7 @@ IP_EMITTERS = [ip_text, ip_mikrotik, ip_ipset, ip_nftables, ip_clash,
                ip_singbox_source, ip_wireguard, ip_json]
 
 
-# =========================================================== domain emitters
+# -------------------------------------------------------------- domain sets
 
 
 def dom_text(ctx: BuildContext, d: DomainSet) -> None:
@@ -256,12 +236,6 @@ def dom_singbox_source(ctx: BuildContext, d: DomainSet) -> None:
 
 
 def dom_clash(ctx: BuildContext, d: DomainSet) -> None:
-    """Clash / Mihomo domain rule-provider.
-
-    ``+.x`` is Clash's suffix form (x and all subdomains); a bare ``x`` is an
-    exact match. Keywords and regexes have no place in a ``domain``-behaviour
-    provider, so they go to a separate classical-behaviour file instead.
-    """
     payload = [f"+.{n}" for n in sorted(d.suffix)] + sorted(d.full)
     write_lines(ctx, f"clash/{d.slug}-domain.yaml",
                 ["payload:"] + [f"  - '{p}'" for p in payload],
@@ -270,6 +244,7 @@ def dom_clash(ctx: BuildContext, d: DomainSet) -> None:
                 f"{d.title} — Clash domain rule-provider (text)",
                 len(payload), d.sources)
 
+    # keywords and regexes have no place in a domain-behaviour provider
     if d.keyword or d.regex:
         classical = [f"DOMAIN-SUFFIX,{n}" for n in sorted(d.suffix)]
         classical += [f"DOMAIN,{n}" for n in sorted(d.full)]
@@ -289,7 +264,7 @@ def dom_surge(ctx: BuildContext, d: DomainSet, role: str) -> None:
     write_lines(ctx, f"surge/{d.slug}-domain.list", rules,
                 f"{d.title} — Surge / Loon rule list", len(rules), d.sources)
 
-    # Surge DOMAIN-SET: a bare domain is exact, a leading dot is the suffix
+    # in a Surge DOMAIN-SET a bare domain is exact, a leading dot is the suffix
     dset = [f".{n}" for n in sorted(d.suffix)] + sorted(d.full)
     write_lines(ctx, f"surge/{d.slug}-domainset.txt", dset,
                 f"{d.title} — Surge DOMAIN-SET", len(dset), d.sources)
@@ -301,9 +276,6 @@ def dom_surge(ctx: BuildContext, d: DomainSet, role: str) -> None:
                 f"{d.title} — Quantumult X filter ({policy})", len(qx), d.sources)
 
 
-# ---- blocking-only outputs -------------------------------------------------
-
-
 def dom_hosts(ctx: BuildContext, d: DomainSet) -> None:
     plain = d.plain_domains()
     note = (f"{d.unrepresentable()} keyword/regex rules cannot be expressed "
@@ -311,13 +283,11 @@ def dom_hosts(ctx: BuildContext, d: DomainSet) -> None:
     body = [f"0.0.0.0 {n}" for n in plain]
     write_lines(ctx, f"hosts/{d.slug}.txt", body,
                 f"{d.title} — hosts blocklist", len(plain), d.sources, note=note)
-    # RouterOS 7.15+ /ip dns adlist reads the same hosts format
     write_lines(ctx, f"mikrotik/adlist-{d.slug}.txt", body,
                 f"{d.title} — RouterOS adlist", len(plain), d.sources, note=note)
 
 
 def dom_adguard(ctx: BuildContext, d: DomainSet) -> None:
-    """AdGuard Home / AdGuard DNS filter syntax."""
     rules = [f"||{n}^" for n in d.plain_domains()]
     rules += [f"/{r}/" for r in sorted(d.regex)]
     write_lines(ctx, f"adguard/{d.slug}.txt", rules,
@@ -325,7 +295,6 @@ def dom_adguard(ctx: BuildContext, d: DomainSet) -> None:
 
 
 def dom_rpz(ctx: BuildContext, d: DomainSet) -> None:
-    """BIND / Knot / PowerDNS Response Policy Zone returning NXDOMAIN."""
     serial = ctx.version.replace(".", "").replace("v", "")[:10] or "1"
     lines = ["$TTL 60",
              f"@ IN SOA localhost. root.localhost. ({serial} 3600 600 86400 60)",
@@ -358,15 +327,12 @@ def dom_smartdns_block(ctx: BuildContext, d: DomainSet) -> None:
                 f"{d.title} — SmartDNS block", len(d.plain_domains()), d.sources)
 
 
-# ---- direct-routing outputs ------------------------------------------------
-
-
 def dom_mikrotik_dns(ctx: BuildContext, d: DomainSet) -> None:
-    """RouterOS static DNS: forward to an Iranian resolver *and* learn the IP.
+    """Forward to an Iranian resolver and learn the resolved addresses.
 
-    ``address-list=`` on a ``type=FWD`` entry writes every resolved address
-    into that address list dynamically. That is what catches Iranian services
-    sitting behind a foreign CDN — no IP list can know about those in advance.
+    address-list= on a type=FWD entry writes every resolved address into that
+    list dynamically, which is what catches Iranian services behind a foreign
+    CDN — no static IP list can know those in advance.
     """
     listname = d.slug.upper().replace("-", "_")
     lines = ["/ip dns static"]
@@ -376,12 +342,11 @@ def dom_mikrotik_dns(ctx: BuildContext, d: DomainSet) -> None:
     for n in sorted(d.full):
         lines.append(f"add type=FWD name={n} "
                      f"forward-to={ctx.resolver} address-list={listname} ttl=1d")
-    count = len(d.suffix) + len(d.full)
     note = (f"{len(d.regex)} regex rules omitted — RouterOS uses POSIX regex, "
             "not RE2") if d.regex else ""
     write_lines(ctx, f"mikrotik/{d.slug}-dns.rsc", lines,
                 f"{d.title} — RouterOS DNS forwarders + {listname} address-list",
-                count, d.sources, note=note)
+                len(d.suffix) + len(d.full), d.sources, note=note)
 
 
 def dom_dnsmasq_route(ctx: BuildContext, d: DomainSet) -> None:
@@ -415,20 +380,14 @@ DOMAIN_EMITTERS_BLOCK = [dom_hosts, dom_adguard, dom_rpz, dom_dnsmasq_block,
 DOMAIN_EMITTERS_DIRECT = [dom_mikrotik_dns, dom_dnsmasq_route,
                           dom_unbound_route, dom_smartdns_route]
 
-# Emitting every format for every set produces roughly 700 MiB, most of it
-# the same domains rewritten with different punctuation. Above this many
-# entries a set only gets the formats people actually point a resolver at;
-# the verbose ones (RPZ writes two lines per domain, Unbound writes a stanza)
-# are skipped and noted in the manifest.
+# Every format for every set is ~700 MiB, most of it the same domains with
+# different punctuation. Past this size a set skips the verbose formats: RPZ
+# writes two lines per domain, Unbound writes a stanza.
 LARGE_SET = 100_000
 
-# The union set exists so a router can be given a single URL. Anyone using
-# Clash, sing-box or Surge references the individual rule-sets instead, which
-# is the entire point of rule-sets — so it does not need those formats.
+# block-all exists so a router can be given a single URL. Clash, sing-box and
+# Surge users reference the individual rule-sets instead.
 AGGREGATE_EMITTERS = [dom_text, dom_hosts, dom_adguard, dom_dnsmasq_block]
-
-
-# ================================================================ dispatch
 
 
 def emit_ipset(ctx: BuildContext, s: IPSet, role: str) -> None:
@@ -439,28 +398,24 @@ def emit_ipset(ctx: BuildContext, s: IPSet, role: str) -> None:
 
 def emit_domainset(ctx: BuildContext, d: DomainSet, role: str,
                    profile: str = "auto") -> str:
-    """Run the emitters appropriate to this set. Returns the profile used."""
     if profile == "auto":
         profile = "large" if d.total >= LARGE_SET else "full"
 
     if profile == "aggregate":
         for fn in AGGREGATE_EMITTERS:
             fn(ctx, d)
-        dom_mikrotik_adlist_only(ctx, d)
+        body = [f"0.0.0.0 {n}" for n in d.plain_domains()]
+        write_lines(ctx, f"mikrotik/adlist-{d.slug}.txt", body,
+                    f"{d.title} — RouterOS adlist", len(body), d.sources)
         return profile
 
     for fn in DOMAIN_EMITTERS_COMMON:
         fn(ctx, d)
-    if role == "block":
-        emitters_for_role = DOMAIN_EMITTERS_BLOCK
-    elif role == "direct":
-        emitters_for_role = DOMAIN_EMITTERS_DIRECT
-    else:
-        emitters_for_role = []
-
+    by_role = {"block": DOMAIN_EMITTERS_BLOCK,
+               "direct": DOMAIN_EMITTERS_DIRECT}.get(role, [])
     verbose = {dom_rpz, dom_unbound_block, dom_smartdns_block,
                dom_unbound_route, dom_smartdns_route}
-    for fn in emitters_for_role:
+    for fn in by_role:
         if profile == "large" and fn in verbose:
             continue
         fn(ctx, d)
@@ -468,14 +423,7 @@ def emit_domainset(ctx: BuildContext, d: DomainSet, role: str,
     if profile == "full":
         dom_surge(ctx, d, role)
     else:
-        # keep the compact DOMAIN-SET form, drop the per-rule listings
         dset = [f".{n}" for n in sorted(d.suffix)] + sorted(d.full)
         write_lines(ctx, f"surge/{d.slug}-domainset.txt", dset,
                     f"{d.title} — Surge DOMAIN-SET", len(dset), d.sources)
     return profile
-
-
-def dom_mikrotik_adlist_only(ctx: BuildContext, d: DomainSet) -> None:
-    body = [f"0.0.0.0 {n}" for n in d.plain_domains()]
-    write_lines(ctx, f"mikrotik/adlist-{d.slug}.txt", body,
-                f"{d.title} — RouterOS adlist", len(d.plain_domains()), d.sources)

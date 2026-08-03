@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Missing Iranian domain
+    url: https://github.com/bootmortis/iran-hosted-domains/issues
+    about: Iranian domain lists are maintained upstream; report it there and the next daily build picks it up.
+  - name: Persian ad or tracker not blocked
+    url: https://github.com/MasterKia/PersianBlocker/issues
+    about: Persian ad rules are maintained upstream by PersianBlocker.
+  - name: Security report
+    url: https://github.com/Arman2122/IR-Geo-DB/security/advisories/new
+    about: Report privately rather than in a public issue.

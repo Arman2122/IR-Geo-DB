@@ -1,0 +1,11 @@
+version: 2
+updates:
+  # The build pins no Python packages — it is standard library only — so the
+  # only moving dependency is the actions themselves.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci
+    labels: ["ci"]
