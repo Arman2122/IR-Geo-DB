@@ -1,0 +1,171 @@
+name: Build and release
+
+on:
+  schedule:
+    # 03:30 UTC daily — after the RIR delegated-stats files have rolled over
+    # for the day, and outside the hour when every other cron job fires.
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and verify only — do not publish"
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths:
+      - "build/**"
+      - ".github/workflows/build.yml"
+
+permissions:
+  contents: write
+
+# A scheduled run and a manual run must never race for the same tag.
+concurrency:
+  group: build-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set build version
+        id: meta
+        run: |
+          echo "version=v$(date -u +%Y.%m.%d)" >> "$GITHUB_OUTPUT"
+          echo "date=$(date -u '+%Y-%m-%d %H:%M UTC')" >> "$GITHUB_OUTPUT"
+
+      - name: Install sing-box
+        run: |
+          set -euo pipefail
+          tag=$(curl -sfL --retry 3 \
+            https://api.github.com/repos/SagerNet/sing-box/releases/latest \
+            | jq -r .tag_name)
+          num=${tag#v}
+          echo "sing-box $tag"
+          curl -sfL --retry 3 -o sb.tar.gz \
+            "https://github.com/SagerNet/sing-box/releases/download/${tag}/sing-box-${num}-linux-amd64.tar.gz"
+          tar xzf sb.tar.gz
+          sudo install -m755 "sing-box-${num}-linux-amd64/sing-box" /usr/local/bin/sing-box
+          rm -rf sb.tar.gz "sing-box-${num}-linux-amd64"
+          sing-box version
+
+      - name: Install mihomo
+        run: |
+          set -euo pipefail
+          tag=$(curl -sfL --retry 3 \
+            https://api.github.com/repos/MetaCubeX/mihomo/releases/latest \
+            | jq -r .tag_name)
+          echo "mihomo $tag"
+          curl -sfL --retry 3 -o mihomo.gz \
+            "https://github.com/MetaCubeX/mihomo/releases/download/${tag}/mihomo-linux-amd64-${tag}.gz"
+          gunzip -f mihomo.gz
+          sudo install -m755 mihomo /usr/local/bin/mihomo
+          rm -f mihomo
+          mihomo -v
+
+      # --require-binaries turns a missing compiler into a hard failure, so a
+      # release can never silently ship without the .srs / .mrs rule-sets.
+      - name: Build
+        run: |
+          python3 build/build.py \
+            --outdir dist \
+            --version "${{ steps.meta.outputs.version }}" \
+            --require-binaries
+
+      - name: Verify
+        run: python3 build/verify.py dist
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "## ${{ steps.meta.outputs.version }}"
+            echo ""
+            python3 - <<'PY'
+          import json
+          s = json.load(open("dist/stats.json"))
+          print("| set | kind | entries |")
+          print("|---|---|---|")
+          for k, v in s["ip_sets"].items():
+              print(f"| `{k}` | ip | {v['ipv4'] + v['ipv6']:,} |")
+          for k, v in s["domain_sets"].items():
+              print(f"| `{k}` | domain | {v['suffix'] + v['full']:,} |")
+          if s.get("sources_failed"):
+              print("\n**Degraded sources:** " + ", ".join(s["sources_failed"]))
+          PY
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Release notes
+        run: |
+          python3 build/release_notes.py \
+            dist/stats.json "${{ steps.meta.outputs.version }}" > NOTES.md
+          head -40 NOTES.md
+
+      # ---------------------------------------------------------- publishing
+      # Two channels on purpose:
+      #   release  — versioned, checksummed, what humans download
+      #   dist     — a branch, so routers get a plain raw.githubusercontent.com
+      #              URL. Release asset URLs redirect through
+      #              objects.githubusercontent.com and RouterOS /tool fetch
+      #              does not reliably follow redirects.
+
+      - name: Publish release
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          # one release per day: replace today's if this is a re-run
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "replacing existing release $VERSION"
+            gh release delete "$VERSION" --yes --cleanup-tag
+            sleep 5
+          fi
+          gh release create "$VERSION" \
+            --title "$VERSION" \
+            --notes-file NOTES.md \
+            --latest \
+            xray.zip sing-box.zip mihomo.zip mikrotik.zip \
+            dns.zip firewall.zip surge.zip \
+            "ir-geo-db-${VERSION}.zip" \
+            dist/SHA256SUMS \
+            dist/stats.json \
+            dist/xray/geoip.dat \
+            dist/xray/geosite.dat \
+            dist/xray/geoip-lite.dat \
+            dist/xray/geosite-lite.dat \
+            dist/xray/geosite-security.dat
+
+      - name: Push dist branch
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # orphan branch: dist holds only build output, never source history
+          git checkout --orphan dist-tmp
+          git rm -rf --cached . >/dev/null
+          find . -maxdepth 1 ! -name . ! -name dist ! -name .git -exec rm -rf {} +
+          mv dist/* . && rmdir dist
+          git add -A
+          git commit -q -m "build $VERSION (${{ steps.meta.outputs.date }})"
+          git branch -M dist
+          git push -f origin dist
+
+      - name: Prune old releases
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # daily builds accumulate; keep the most recent 30
+          gh release list --limit 200 --json tagName --jq '.[].tagName' \
+            | tail -n +31 \
+            | xargs -r -I{} gh release delete {} --yes --cleanup-tag
