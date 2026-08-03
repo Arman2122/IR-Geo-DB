@@ -23,10 +23,13 @@ Everything is built by GitHub Actions on a schedule. There is no server, no
 database and no state carried between runs: every build starts from the
 upstream sources and reproduces the whole tree.
 
-> **If you fork this:** GitHub disables scheduled workflows after 60 days with
-> no *human* repository activity — the build's own commits do not reset that
-> timer. Push something, or re-enable the workflow from the Actions tab, if
-> the daily build ever goes quiet.
+> **On the 60-day rule:** GitHub disables scheduled workflows in public repos
+> after 60 days with no repository activity. The daily commit this build
+> pushes to the `dist` branch is that activity, so the schedule sustains
+> itself — bot commits count, and long-running repos with this exact shape
+> confirm it. The case to watch is a build that *fails* 60 days running: it
+> pushes nothing, so nothing resets the timer. GitHub emails before disabling,
+> and `gh workflow enable build.yml` turns it back on.
 
 ## Download
 
