@@ -1,0 +1,19 @@
+# build output — published to the dist branch and releases, never to main
+dist/
+*.zip
+*.tar.gz
+NOTES.md
+
+# local download cache (build.py --cache)
+.cache/
+
+# toolchain binaries fetched for local runs
+sing-box
+sing-box.exe
+mihomo
+mihomo.exe
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/

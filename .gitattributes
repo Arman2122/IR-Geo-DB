@@ -1,0 +1,12 @@
+# Generated output and scripts are consumed by Linux runners, routers and
+# shells that do not tolerate CRLF. Normalise on commit, check out as LF
+# everywhere so a Windows clone cannot reintroduce it.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.dat binary
+*.srs binary
+*.mrs binary
+*.zip binary
+*.gz  binary
