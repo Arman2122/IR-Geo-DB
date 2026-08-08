@@ -1,0 +1,50 @@
+# Mihomo / Clash.Meta configuration snippet
+# Entries: 5
+# Built:   2026-08-08 04:35:18 UTC   Release: v2026.08.08
+# Sources: n/a
+# Project: https://github.com/Arman2122/IR-Geo-DB
+#
+rule-providers:
+  ir-domain:
+    type: http
+    behavior: domain
+    format: mrs
+    interval: 86400
+    url: https://raw.githubusercontent.com/Arman2122/IR-Geo-DB/dist/mihomo/ir-domain.mrs
+    path: ./ruleset/ir-domain.mrs
+  ir-ip:
+    type: http
+    behavior: ipcidr
+    format: mrs
+    interval: 86400
+    url: https://raw.githubusercontent.com/Arman2122/IR-Geo-DB/dist/mihomo/ir-ip.mrs
+    path: ./ruleset/ir-ip.mrs
+  ads-domain:
+    type: http
+    behavior: domain
+    format: mrs
+    interval: 86400
+    url: https://raw.githubusercontent.com/Arman2122/IR-Geo-DB/dist/mihomo/ads-domain.mrs
+    path: ./ruleset/ads-domain.mrs
+  malware-domain:
+    type: http
+    behavior: domain
+    format: mrs
+    interval: 86400
+    url: https://raw.githubusercontent.com/Arman2122/IR-Geo-DB/dist/mihomo/malware-domain.mrs
+    path: ./ruleset/malware-domain.mrs
+  phishing-domain:
+    type: http
+    behavior: domain
+    format: mrs
+    interval: 86400
+    url: https://raw.githubusercontent.com/Arman2122/IR-Geo-DB/dist/mihomo/phishing-domain.mrs
+    path: ./ruleset/phishing-domain.mrs
+
+rules:
+  - RULE-SET,ads-domain,REJECT
+  - RULE-SET,malware-domain,REJECT
+  - RULE-SET,phishing-domain,REJECT
+  - RULE-SET,ir-domain,DIRECT
+  - RULE-SET,ir-ip,DIRECT,no-resolve
+  - MATCH,PROXY

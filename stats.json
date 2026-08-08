@@ -1,0 +1,236 @@
+{
+  "version": "v2026.08.08",
+  "generated": "2026-08-08 04:35:18 UTC",
+  "ip_sets": {
+    "ir": {
+      "kind": "ip",
+      "set": "ir",
+      "ipv4": 1739,
+      "ipv6": 570,
+      "malformed": 0,
+      "sources": [
+        "RIR delegated statistics (RIPE NCC, APNIC, ARIN, LACNIC, AFRINIC)"
+      ]
+    },
+    "ir-cdn": {
+      "kind": "ip",
+      "set": "ir-cdn",
+      "ipv4": 74,
+      "ipv6": 0,
+      "malformed": 0,
+      "sources": [
+        "ArvanCloud",
+        "ParsPack"
+      ]
+    },
+    "ir-full": {
+      "kind": "ip",
+      "set": "ir-full",
+      "ipv4": 1786,
+      "ipv6": 570,
+      "malformed": 0,
+      "sources": [
+        "RIR delegated statistics (RIPE NCC, APNIC, ARIN, LACNIC, AFRINIC)",
+        "ArvanCloud",
+        "ParsPack"
+      ]
+    },
+    "private": {
+      "kind": "ip",
+      "set": "private",
+      "ipv4": 14,
+      "ipv6": 4,
+      "malformed": 0,
+      "sources": [
+        "RFC 1918 / 5735 / 6598 / 4193"
+      ]
+    },
+    "malware": {
+      "kind": "ip",
+      "set": "malware",
+      "ipv4": 5,
+      "ipv6": 0,
+      "malformed": 0,
+      "sources": [
+        "Feodo Tracker / abuse.ch (CC0)"
+      ]
+    },
+    "phishing": {
+      "kind": "ip",
+      "set": "phishing",
+      "ipv4": 7063,
+      "ipv6": 0,
+      "malformed": 0,
+      "sources": [
+        "Phishing.Database (MIT)"
+      ]
+    }
+  },
+  "domain_sets": {
+    "ir": {
+      "kind": "domain",
+      "set": "ir",
+      "suffix": 62827,
+      "full": 0,
+      "keyword": 0,
+      "regex": 0,
+      "pruned": 0,
+      "malformed": 0,
+      "sources": [
+        "Iran Hosted Domains (MIT)"
+      ]
+    },
+    "ads-ir": {
+      "kind": "domain",
+      "set": "ads-ir",
+      "suffix": 256,
+      "full": 0,
+      "keyword": 0,
+      "regex": 0,
+      "pruned": 5,
+      "malformed": 2,
+      "sources": [
+        "PersianBlocker (AGPL-3.0)"
+      ]
+    },
+    "ads": {
+      "kind": "domain",
+      "set": "ads",
+      "suffix": 181444,
+      "full": 0,
+      "keyword": 0,
+      "regex": 0,
+      "pruned": 4155,
+      "malformed": 2,
+      "sources": [
+        "PersianBlocker (AGPL-3.0)",
+        "HaGeZi Multi LIGHT (GPL-3.0)",
+        "AdGuard DNS filter (GPL-3.0)"
+      ]
+    },
+    "malware": {
+      "kind": "domain",
+      "set": "malware",
+      "suffix": 366,
+      "full": 0,
+      "keyword": 0,
+      "regex": 0,
+      "pruned": 11,
+      "malformed": 0,
+      "sources": [
+        "URLhaus / abuse.ch (CC0)"
+      ]
+    },
+    "phishing": {
+      "kind": "domain",
+      "set": "phishing",
+      "suffix": 376797,
+      "full": 0,
+      "keyword": 0,
+      "regex": 0,
+      "pruned": 14708,
+      "malformed": 100,
+      "sources": [
+        "Phishing.Database (MIT)"
+      ]
+    },
+    "cryptominers": {
+      "kind": "domain",
+      "set": "cryptominers",
+      "suffix": 297,
+      "full": 0,
+      "keyword": 0,
+      "regex": 0,
+      "pruned": 16,
+      "malformed": 0,
+      "sources": [
+        "NoCoin adblock list (MIT)"
+      ]
+    },
+    "nsfw": {
+      "kind": "domain",
+      "set": "nsfw",
+      "suffix": 47626,
+      "full": 0,
+      "keyword": 0,
+      "regex": 0,
+      "pruned": 29123,
+      "malformed": 0,
+      "sources": [
+        "StevenBlack unified hosts (MIT)"
+      ]
+    },
+    "block-all": {
+      "kind": "domain",
+      "set": "block-all",
+      "suffix": 544847,
+      "full": 0,
+      "keyword": 0,
+      "regex": 0,
+      "pruned": 13891,
+      "malformed": 0,
+      "sources": [
+        "AdGuard DNS filter (GPL-3.0)",
+        "HaGeZi Multi LIGHT (GPL-3.0)",
+        "NoCoin adblock list (MIT)",
+        "PersianBlocker (AGPL-3.0)",
+        "Phishing.Database (MIT)",
+        "URLhaus / abuse.ch (CC0)"
+      ]
+    }
+  },
+  "sources_ok": [
+    "ads-adguard",
+    "ads-hagezi",
+    "ads-persian",
+    "arvancloud",
+    "cloud-aws",
+    "cloud-cloudflare-v4",
+    "cloud-cloudflare-v6",
+    "cloud-fastly",
+    "cloud-gcloud",
+    "cloud-gcore",
+    "cloud-google",
+    "crypto-nocoin",
+    "ir-domains",
+    "malware-urlhaus",
+    "nsfw-stevenblack",
+    "parspack",
+    "phishing-db",
+    "rir-afrinic",
+    "rir-apnic",
+    "rir-arin",
+    "rir-lacnic",
+    "rir-ripencc",
+    "threat-ip-malware",
+    "threat-ip-phishing",
+    "xc-ipdeny-v4",
+    "xc-ipverse-v4",
+    "xc-ipverse-v6"
+  ],
+  "sources_failed": {},
+  "audit": {
+    "foreign_cloud_overlap_addresses": 0,
+    "foreign_cloud_prefixes_known": 5034,
+    "foreign_cloud_excluded": true,
+    "crosscheck_ipverse": {
+      "their_ipv4_prefixes": 1739,
+      "their_ipv6_prefixes": 570,
+      "exact_prefix_matches": 1739,
+      "only_ours": 0,
+      "only_theirs": 0,
+      "address_coverage_ratio": 1.0
+    },
+    "crosscheck_ipdeny": {
+      "their_ipv4_prefixes": 1739,
+      "their_ipv6_prefixes": 0,
+      "exact_prefix_matches": 1739,
+      "only_ours": 0,
+      "only_theirs": 0,
+      "address_coverage_ratio": 1.0
+    },
+    "ir_ipv4_addresses": 10831872,
+    "ir_ipv4_prefixes": 1739,
+    "ir_ipv6_prefixes": 570
+  }
+}

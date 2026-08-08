@@ -1,0 +1,1076 @@
+{
+  "version": "v2026.08.08",
+  "generated": "2026-08-08 04:35:18 UTC",
+  "files": [
+    {
+      "file": "adguard/ads-ir.txt",
+      "entries": 256,
+      "note": ""
+    },
+    {
+      "file": "adguard/ads.txt",
+      "entries": 181444,
+      "note": ""
+    },
+    {
+      "file": "adguard/block-all.txt",
+      "entries": 544847,
+      "note": ""
+    },
+    {
+      "file": "adguard/cryptominers.txt",
+      "entries": 297,
+      "note": ""
+    },
+    {
+      "file": "adguard/malware.txt",
+      "entries": 366,
+      "note": ""
+    },
+    {
+      "file": "adguard/nsfw.txt",
+      "entries": 47626,
+      "note": ""
+    },
+    {
+      "file": "adguard/phishing.txt",
+      "entries": 376797,
+      "note": ""
+    },
+    {
+      "file": "clash/ads-domain.list",
+      "entries": 181444,
+      "note": ""
+    },
+    {
+      "file": "clash/ads-domain.yaml",
+      "entries": 181444,
+      "note": ""
+    },
+    {
+      "file": "clash/ads-ir-domain.list",
+      "entries": 256,
+      "note": ""
+    },
+    {
+      "file": "clash/ads-ir-domain.yaml",
+      "entries": 256,
+      "note": ""
+    },
+    {
+      "file": "clash/config-snippet.yaml",
+      "entries": 5,
+      "note": ""
+    },
+    {
+      "file": "clash/cryptominers-domain.list",
+      "entries": 297,
+      "note": ""
+    },
+    {
+      "file": "clash/cryptominers-domain.yaml",
+      "entries": 297,
+      "note": ""
+    },
+    {
+      "file": "clash/ir-cdn-ip.list",
+      "entries": 74,
+      "note": ""
+    },
+    {
+      "file": "clash/ir-cdn-ip.yaml",
+      "entries": 74,
+      "note": ""
+    },
+    {
+      "file": "clash/ir-domain.list",
+      "entries": 62827,
+      "note": ""
+    },
+    {
+      "file": "clash/ir-domain.yaml",
+      "entries": 62827,
+      "note": ""
+    },
+    {
+      "file": "clash/ir-full-ip.list",
+      "entries": 2356,
+      "note": ""
+    },
+    {
+      "file": "clash/ir-full-ip.yaml",
+      "entries": 2356,
+      "note": ""
+    },
+    {
+      "file": "clash/ir-ip.list",
+      "entries": 2309,
+      "note": ""
+    },
+    {
+      "file": "clash/ir-ip.yaml",
+      "entries": 2309,
+      "note": ""
+    },
+    {
+      "file": "clash/malware-domain.list",
+      "entries": 366,
+      "note": ""
+    },
+    {
+      "file": "clash/malware-domain.yaml",
+      "entries": 366,
+      "note": ""
+    },
+    {
+      "file": "clash/malware-ip.list",
+      "entries": 5,
+      "note": ""
+    },
+    {
+      "file": "clash/malware-ip.yaml",
+      "entries": 5,
+      "note": ""
+    },
+    {
+      "file": "clash/nsfw-domain.list",
+      "entries": 47626,
+      "note": ""
+    },
+    {
+      "file": "clash/nsfw-domain.yaml",
+      "entries": 47626,
+      "note": ""
+    },
+    {
+      "file": "clash/phishing-domain.list",
+      "entries": 376797,
+      "note": ""
+    },
+    {
+      "file": "clash/phishing-domain.yaml",
+      "entries": 376797,
+      "note": ""
+    },
+    {
+      "file": "clash/phishing-ip.list",
+      "entries": 7063,
+      "note": ""
+    },
+    {
+      "file": "clash/phishing-ip.yaml",
+      "entries": 7063,
+      "note": ""
+    },
+    {
+      "file": "clash/private-ip.list",
+      "entries": 18,
+      "note": ""
+    },
+    {
+      "file": "clash/private-ip.yaml",
+      "entries": 18,
+      "note": ""
+    },
+    {
+      "file": "dnsmasq/ads-block.conf",
+      "entries": 181444,
+      "note": ""
+    },
+    {
+      "file": "dnsmasq/ads-ir-block.conf",
+      "entries": 256,
+      "note": ""
+    },
+    {
+      "file": "dnsmasq/block-all-block.conf",
+      "entries": 544847,
+      "note": ""
+    },
+    {
+      "file": "dnsmasq/cryptominers-block.conf",
+      "entries": 297,
+      "note": ""
+    },
+    {
+      "file": "dnsmasq/ir-route.conf",
+      "entries": 62827,
+      "note": ""
+    },
+    {
+      "file": "dnsmasq/malware-block.conf",
+      "entries": 366,
+      "note": ""
+    },
+    {
+      "file": "dnsmasq/nsfw-block.conf",
+      "entries": 47626,
+      "note": ""
+    },
+    {
+      "file": "dnsmasq/phishing-block.conf",
+      "entries": 376797,
+      "note": ""
+    },
+    {
+      "file": "hosts/ads-ir.txt",
+      "entries": 256,
+      "note": ""
+    },
+    {
+      "file": "hosts/ads.txt",
+      "entries": 181444,
+      "note": ""
+    },
+    {
+      "file": "hosts/block-all.txt",
+      "entries": 544847,
+      "note": ""
+    },
+    {
+      "file": "hosts/cryptominers.txt",
+      "entries": 297,
+      "note": ""
+    },
+    {
+      "file": "hosts/malware.txt",
+      "entries": 366,
+      "note": ""
+    },
+    {
+      "file": "hosts/nsfw.txt",
+      "entries": 47626,
+      "note": ""
+    },
+    {
+      "file": "hosts/phishing.txt",
+      "entries": 376797,
+      "note": ""
+    },
+    {
+      "file": "ipset/ir-cdn.ipset",
+      "entries": 74,
+      "note": ""
+    },
+    {
+      "file": "ipset/ir-full.ipset",
+      "entries": 2356,
+      "note": ""
+    },
+    {
+      "file": "ipset/ir.ipset",
+      "entries": 2309,
+      "note": ""
+    },
+    {
+      "file": "ipset/malware.ipset",
+      "entries": 5,
+      "note": ""
+    },
+    {
+      "file": "ipset/phishing.ipset",
+      "entries": 7063,
+      "note": ""
+    },
+    {
+      "file": "ipset/private.ipset",
+      "entries": 18,
+      "note": ""
+    },
+    {
+      "file": "json/ir-cdn-ip.json",
+      "entries": 74,
+      "note": ""
+    },
+    {
+      "file": "json/ir-full-ip.json",
+      "entries": 2356,
+      "note": ""
+    },
+    {
+      "file": "json/ir-ip.json",
+      "entries": 2309,
+      "note": ""
+    },
+    {
+      "file": "json/malware-ip.json",
+      "entries": 5,
+      "note": ""
+    },
+    {
+      "file": "json/phishing-ip.json",
+      "entries": 7063,
+      "note": ""
+    },
+    {
+      "file": "json/private-ip.json",
+      "entries": 18,
+      "note": ""
+    },
+    {
+      "file": "mihomo/ads-domain.mrs",
+      "entries": 0,
+      "note": ""
+    },
+    {
+      "file": "mihomo/ads-ir-domain.mrs",
+      "entries": 0,
+      "note": ""
+    },
+    {
+      "file": "mihomo/cryptominers-domain.mrs",
+      "entries": 0,
+      "note": ""
+    },
+    {
+      "file": "mihomo/ir-cdn-ip.mrs",
+      "entries": 0,
+      "note": ""
+    },
+    {
+      "file": "mihomo/ir-domain.mrs",
+      "entries": 0,
+      "note": ""
+    },
+    {
+      "file": "mihomo/ir-full-ip.mrs",
+      "entries": 0,
+      "note": ""
+    },
+    {
+      "file": "mihomo/ir-ip.mrs",
+      "entries": 0,
+      "note": ""
+    },
+    {
+      "file": "mihomo/malware-domain.mrs",
+      "entries": 0,
+      "note": ""
+    },
+    {
+      "file": "mihomo/malware-ip.mrs",
+      "entries": 0,
+      "note": ""
+    },
+    {
+      "file": "mihomo/nsfw-domain.mrs",
+      "entries": 0,
+      "note": ""
+    },
+    {
+      "file": "mihomo/phishing-domain.mrs",
+      "entries": 0,
+      "note": ""
+    },
+    {
+      "file": "mihomo/phishing-ip.mrs",
+      "entries": 0,
+      "note": ""
+    },
+    {
+      "file": "mihomo/private-ip.mrs",
+      "entries": 0,
+      "note": ""
+    },
+    {
+      "file": "mikrotik/adlist-ads-ir.txt",
+      "entries": 256,
+      "note": ""
+    },
+    {
+      "file": "mikrotik/adlist-ads.txt",
+      "entries": 181444,
+      "note": ""
+    },
+    {
+      "file": "mikrotik/adlist-block-all.txt",
+      "entries": 544847,
+      "note": ""
+    },
+    {
+      "file": "mikrotik/adlist-block-all.txt",
+      "entries": 544847,
+      "note": ""
+    },
+    {
+      "file": "mikrotik/adlist-cryptominers.txt",
+      "entries": 297,
+      "note": ""
+    },
+    {
+      "file": "mikrotik/adlist-malware.txt",
+      "entries": 366,
+      "note": ""
+    },
+    {
+      "file": "mikrotik/adlist-nsfw.txt",
+      "entries": 47626,
+      "note": ""
+    },
+    {
+      "file": "mikrotik/adlist-phishing.txt",
+      "entries": 376797,
+      "note": ""
+    },
+    {
+      "file": "mikrotik/auto-update.rsc",
+      "entries": 1,
+      "note": ""
+    },
+    {
+      "file": "mikrotik/ir-cdn-ipv4-reset.rsc",
+      "entries": 74,
+      "note": ""
+    },
+    {
+      "file": "mikrotik/ir-cdn-ipv4.rsc",
+      "entries": 74,
+      "note": ""
+    },
+    {
+      "file": "mikrotik/ir-dns.rsc",
+      "entries": 62827,
+      "note": ""
+    },
+    {
+      "file": "mikrotik/ir-full-ipv4-reset.rsc",
+      "entries": 1786,
+      "note": ""
+    },
+    {
+      "file": "mikrotik/ir-full-ipv4.rsc",
+      "entries": 1786,
+      "note": ""
+    },
+    {
+      "file": "mikrotik/ir-full-ipv6-reset.rsc",
+      "entries": 570,
+      "note": ""
+    },
+    {
+      "file": "mikrotik/ir-full-ipv6.rsc",
+      "entries": 570,
+      "note": ""
+    },
+    {
+      "file": "mikrotik/ir-ipv4-reset.rsc",
+      "entries": 1739,
+      "note": ""
+    },
+    {
+      "file": "mikrotik/ir-ipv4.rsc",
+      "entries": 1739,
+      "note": ""
+    },
+    {
+      "file": "mikrotik/ir-ipv6-reset.rsc",
+      "entries": 570,
+      "note": ""
+    },
+    {
+      "file": "mikrotik/ir-ipv6.rsc",
+      "entries": 570,
+      "note": ""
+    },
+    {
+      "file": "mikrotik/malware-ipv4-reset.rsc",
+      "entries": 5,
+      "note": ""
+    },
+    {
+      "file": "mikrotik/malware-ipv4.rsc",
+      "entries": 5,
+      "note": ""
+    },
+    {
+      "file": "mikrotik/phishing-ipv4-reset.rsc",
+      "entries": 7063,
+      "note": ""
+    },
+    {
+      "file": "mikrotik/phishing-ipv4.rsc",
+      "entries": 7063,
+      "note": ""
+    },
+    {
+      "file": "mikrotik/private-ipv4-reset.rsc",
+      "entries": 14,
+      "note": ""
+    },
+    {
+      "file": "mikrotik/private-ipv4.rsc",
+      "entries": 14,
+      "note": ""
+    },
+    {
+      "file": "mikrotik/private-ipv6-reset.rsc",
+      "entries": 4,
+      "note": ""
+    },
+    {
+      "file": "mikrotik/private-ipv6.rsc",
+      "entries": 4,
+      "note": ""
+    },
+    {
+      "file": "nftables/ir-cdn.nft",
+      "entries": 74,
+      "note": ""
+    },
+    {
+      "file": "nftables/ir-full.nft",
+      "entries": 2356,
+      "note": ""
+    },
+    {
+      "file": "nftables/ir.nft",
+      "entries": 2309,
+      "note": ""
+    },
+    {
+      "file": "nftables/malware.nft",
+      "entries": 5,
+      "note": ""
+    },
+    {
+      "file": "nftables/phishing.nft",
+      "entries": 7063,
+      "note": ""
+    },
+    {
+      "file": "nftables/private.nft",
+      "entries": 18,
+      "note": ""
+    },
+    {
+      "file": "quantumultx/ads-ir-domain.list",
+      "entries": 256,
+      "note": ""
+    },
+    {
+      "file": "quantumultx/cryptominers-domain.list",
+      "entries": 297,
+      "note": ""
+    },
+    {
+      "file": "quantumultx/ir-cdn-ip.list",
+      "entries": 74,
+      "note": ""
+    },
+    {
+      "file": "quantumultx/ir-domain.list",
+      "entries": 62827,
+      "note": ""
+    },
+    {
+      "file": "quantumultx/ir-full-ip.list",
+      "entries": 2356,
+      "note": ""
+    },
+    {
+      "file": "quantumultx/ir-ip.list",
+      "entries": 2309,
+      "note": ""
+    },
+    {
+      "file": "quantumultx/malware-domain.list",
+      "entries": 366,
+      "note": ""
+    },
+    {
+      "file": "quantumultx/malware-ip.list",
+      "entries": 5,
+      "note": ""
+    },
+    {
+      "file": "quantumultx/nsfw-domain.list",
+      "entries": 47626,
+      "note": ""
+    },
+    {
+      "file": "quantumultx/phishing-ip.list",
+      "entries": 7063,
+      "note": ""
+    },
+    {
+      "file": "quantumultx/private-ip.list",
+      "entries": 18,
+      "note": ""
+    },
+    {
+      "file": "rpz/ads-ir.zone",
+      "entries": 256,
+      "note": ""
+    },
+    {
+      "file": "rpz/cryptominers.zone",
+      "entries": 297,
+      "note": ""
+    },
+    {
+      "file": "rpz/malware.zone",
+      "entries": 366,
+      "note": ""
+    },
+    {
+      "file": "rpz/nsfw.zone",
+      "entries": 47626,
+      "note": ""
+    },
+    {
+      "file": "sing-box/config-snippet.json",
+      "entries": 5,
+      "note": ""
+    },
+    {
+      "file": "sing-box/rule-set/geoip-ir-cdn.srs",
+      "entries": 0,
+      "note": ""
+    },
+    {
+      "file": "sing-box/rule-set/geoip-ir-full.srs",
+      "entries": 0,
+      "note": ""
+    },
+    {
+      "file": "sing-box/rule-set/geoip-ir.srs",
+      "entries": 0,
+      "note": ""
+    },
+    {
+      "file": "sing-box/rule-set/geoip-malware.srs",
+      "entries": 0,
+      "note": ""
+    },
+    {
+      "file": "sing-box/rule-set/geoip-phishing.srs",
+      "entries": 0,
+      "note": ""
+    },
+    {
+      "file": "sing-box/rule-set/geoip-private.srs",
+      "entries": 0,
+      "note": ""
+    },
+    {
+      "file": "sing-box/rule-set/geosite-ads-ir.srs",
+      "entries": 0,
+      "note": ""
+    },
+    {
+      "file": "sing-box/rule-set/geosite-ads.srs",
+      "entries": 0,
+      "note": ""
+    },
+    {
+      "file": "sing-box/rule-set/geosite-cryptominers.srs",
+      "entries": 0,
+      "note": ""
+    },
+    {
+      "file": "sing-box/rule-set/geosite-ir.srs",
+      "entries": 0,
+      "note": ""
+    },
+    {
+      "file": "sing-box/rule-set/geosite-malware.srs",
+      "entries": 0,
+      "note": ""
+    },
+    {
+      "file": "sing-box/rule-set/geosite-nsfw.srs",
+      "entries": 0,
+      "note": ""
+    },
+    {
+      "file": "sing-box/rule-set/geosite-phishing.srs",
+      "entries": 0,
+      "note": ""
+    },
+    {
+      "file": "sing-box/source/geoip-ir-cdn.json",
+      "entries": 74,
+      "note": ""
+    },
+    {
+      "file": "sing-box/source/geoip-ir-full.json",
+      "entries": 2356,
+      "note": ""
+    },
+    {
+      "file": "sing-box/source/geoip-ir.json",
+      "entries": 2309,
+      "note": ""
+    },
+    {
+      "file": "sing-box/source/geoip-malware.json",
+      "entries": 5,
+      "note": ""
+    },
+    {
+      "file": "sing-box/source/geoip-phishing.json",
+      "entries": 7063,
+      "note": ""
+    },
+    {
+      "file": "sing-box/source/geoip-private.json",
+      "entries": 18,
+      "note": ""
+    },
+    {
+      "file": "sing-box/source/geosite-ads-ir.json",
+      "entries": 256,
+      "note": ""
+    },
+    {
+      "file": "sing-box/source/geosite-ads.json",
+      "entries": 181444,
+      "note": ""
+    },
+    {
+      "file": "sing-box/source/geosite-cryptominers.json",
+      "entries": 297,
+      "note": ""
+    },
+    {
+      "file": "sing-box/source/geosite-ir.json",
+      "entries": 62827,
+      "note": ""
+    },
+    {
+      "file": "sing-box/source/geosite-malware.json",
+      "entries": 366,
+      "note": ""
+    },
+    {
+      "file": "sing-box/source/geosite-nsfw.json",
+      "entries": 47626,
+      "note": ""
+    },
+    {
+      "file": "sing-box/source/geosite-phishing.json",
+      "entries": 376797,
+      "note": ""
+    },
+    {
+      "file": "smartdns/ads-ir-block.conf",
+      "entries": 256,
+      "note": ""
+    },
+    {
+      "file": "smartdns/cryptominers-block.conf",
+      "entries": 297,
+      "note": ""
+    },
+    {
+      "file": "smartdns/ir-route.conf",
+      "entries": 62827,
+      "note": ""
+    },
+    {
+      "file": "smartdns/malware-block.conf",
+      "entries": 366,
+      "note": ""
+    },
+    {
+      "file": "smartdns/nsfw-block.conf",
+      "entries": 47626,
+      "note": ""
+    },
+    {
+      "file": "stats.json",
+      "entries": 0,
+      "note": ""
+    },
+    {
+      "file": "surge/ads-domainset.txt",
+      "entries": 181444,
+      "note": ""
+    },
+    {
+      "file": "surge/ads-ir-domain.list",
+      "entries": 256,
+      "note": ""
+    },
+    {
+      "file": "surge/ads-ir-domainset.txt",
+      "entries": 256,
+      "note": ""
+    },
+    {
+      "file": "surge/cryptominers-domain.list",
+      "entries": 297,
+      "note": ""
+    },
+    {
+      "file": "surge/cryptominers-domainset.txt",
+      "entries": 297,
+      "note": ""
+    },
+    {
+      "file": "surge/ir-cdn-ip.list",
+      "entries": 74,
+      "note": ""
+    },
+    {
+      "file": "surge/ir-domain.list",
+      "entries": 62827,
+      "note": ""
+    },
+    {
+      "file": "surge/ir-domainset.txt",
+      "entries": 62827,
+      "note": ""
+    },
+    {
+      "file": "surge/ir-full-ip.list",
+      "entries": 2356,
+      "note": ""
+    },
+    {
+      "file": "surge/ir-ip.list",
+      "entries": 2309,
+      "note": ""
+    },
+    {
+      "file": "surge/malware-domain.list",
+      "entries": 366,
+      "note": ""
+    },
+    {
+      "file": "surge/malware-domainset.txt",
+      "entries": 366,
+      "note": ""
+    },
+    {
+      "file": "surge/malware-ip.list",
+      "entries": 5,
+      "note": ""
+    },
+    {
+      "file": "surge/nsfw-domain.list",
+      "entries": 47626,
+      "note": ""
+    },
+    {
+      "file": "surge/nsfw-domainset.txt",
+      "entries": 47626,
+      "note": ""
+    },
+    {
+      "file": "surge/phishing-domainset.txt",
+      "entries": 376797,
+      "note": ""
+    },
+    {
+      "file": "surge/phishing-ip.list",
+      "entries": 7063,
+      "note": ""
+    },
+    {
+      "file": "surge/private-ip.list",
+      "entries": 18,
+      "note": ""
+    },
+    {
+      "file": "text/ads-domains.txt",
+      "entries": 181444,
+      "note": ""
+    },
+    {
+      "file": "text/ads-ir-domains.txt",
+      "entries": 256,
+      "note": ""
+    },
+    {
+      "file": "text/block-all-domains.txt",
+      "entries": 544847,
+      "note": ""
+    },
+    {
+      "file": "text/cryptominers-domains.txt",
+      "entries": 297,
+      "note": ""
+    },
+    {
+      "file": "text/ir-all.txt",
+      "entries": 2309,
+      "note": ""
+    },
+    {
+      "file": "text/ir-cdn-all.txt",
+      "entries": 74,
+      "note": ""
+    },
+    {
+      "file": "text/ir-cdn-ipv4.txt",
+      "entries": 74,
+      "note": ""
+    },
+    {
+      "file": "text/ir-domains.txt",
+      "entries": 62827,
+      "note": ""
+    },
+    {
+      "file": "text/ir-full-all.txt",
+      "entries": 2356,
+      "note": ""
+    },
+    {
+      "file": "text/ir-full-ipv4.txt",
+      "entries": 1786,
+      "note": ""
+    },
+    {
+      "file": "text/ir-full-ipv6.txt",
+      "entries": 570,
+      "note": ""
+    },
+    {
+      "file": "text/ir-ipv4.txt",
+      "entries": 1739,
+      "note": ""
+    },
+    {
+      "file": "text/ir-ipv6.txt",
+      "entries": 570,
+      "note": ""
+    },
+    {
+      "file": "text/malware-all.txt",
+      "entries": 5,
+      "note": ""
+    },
+    {
+      "file": "text/malware-domains.txt",
+      "entries": 366,
+      "note": ""
+    },
+    {
+      "file": "text/malware-ipv4.txt",
+      "entries": 5,
+      "note": ""
+    },
+    {
+      "file": "text/nsfw-domains.txt",
+      "entries": 47626,
+      "note": ""
+    },
+    {
+      "file": "text/phishing-all.txt",
+      "entries": 7063,
+      "note": ""
+    },
+    {
+      "file": "text/phishing-domains.txt",
+      "entries": 376797,
+      "note": ""
+    },
+    {
+      "file": "text/phishing-ipv4.txt",
+      "entries": 7063,
+      "note": ""
+    },
+    {
+      "file": "text/private-all.txt",
+      "entries": 18,
+      "note": ""
+    },
+    {
+      "file": "text/private-ipv4.txt",
+      "entries": 14,
+      "note": ""
+    },
+    {
+      "file": "text/private-ipv6.txt",
+      "entries": 4,
+      "note": ""
+    },
+    {
+      "file": "unbound/ads-ir-block.conf",
+      "entries": 256,
+      "note": ""
+    },
+    {
+      "file": "unbound/cryptominers-block.conf",
+      "entries": 297,
+      "note": ""
+    },
+    {
+      "file": "unbound/ir-route.conf",
+      "entries": 62827,
+      "note": ""
+    },
+    {
+      "file": "unbound/malware-block.conf",
+      "entries": 366,
+      "note": ""
+    },
+    {
+      "file": "unbound/nsfw-block.conf",
+      "entries": 47626,
+      "note": ""
+    },
+    {
+      "file": "wireguard/ir-allowedips.conf",
+      "entries": 2309,
+      "note": ""
+    },
+    {
+      "file": "wireguard/ir-cdn-allowedips.conf",
+      "entries": 74,
+      "note": ""
+    },
+    {
+      "file": "wireguard/ir-full-allowedips.conf",
+      "entries": 2356,
+      "note": ""
+    },
+    {
+      "file": "wireguard/malware-allowedips.conf",
+      "entries": 5,
+      "note": ""
+    },
+    {
+      "file": "wireguard/phishing-allowedips.conf",
+      "entries": 7063,
+      "note": ""
+    },
+    {
+      "file": "wireguard/private-allowedips.conf",
+      "entries": 18,
+      "note": ""
+    },
+    {
+      "file": "xray/geoip-lite.dat",
+      "entries": 2327,
+      "note": ""
+    },
+    {
+      "file": "xray/geoip.dat",
+      "entries": 11825,
+      "note": ""
+    },
+    {
+      "file": "xray/geosite-lite.dat",
+      "entries": 63083,
+      "note": ""
+    },
+    {
+      "file": "xray/geosite-security.dat",
+      "entries": 558904,
+      "note": ""
+    },
+    {
+      "file": "xray/geosite.dat",
+      "entries": 851057,
+      "note": ""
+    },
+    {
+      "file": "xray/routing-rules.json",
+      "entries": 4,
+      "note": ""
+    }
+  ]
+}

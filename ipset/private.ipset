@@ -1,0 +1,28 @@
+# RFC-reserved and private address space — ipset restore
+# Entries: 18
+# Built:   2026-08-08 04:35:18 UTC   Release: v2026.08.08
+# Sources: RFC 1918 / 5735 / 6598 / 4193
+# Project: https://github.com/Arman2122/IR-Geo-DB
+#
+create private-v4 hash:net family inet -exist
+flush private-v4
+add private-v4 0.0.0.0/8 -exist
+add private-v4 10.0.0.0/8 -exist
+add private-v4 100.64.0.0/10 -exist
+add private-v4 127.0.0.0/8 -exist
+add private-v4 169.254.0.0/16 -exist
+add private-v4 172.16.0.0/12 -exist
+add private-v4 192.0.0.0/24 -exist
+add private-v4 192.0.2.0/24 -exist
+add private-v4 192.88.99.0/24 -exist
+add private-v4 192.168.0.0/16 -exist
+add private-v4 198.18.0.0/15 -exist
+add private-v4 198.51.100.0/24 -exist
+add private-v4 203.0.113.0/24 -exist
+add private-v4 224.0.0.0/3 -exist
+create private-v6 hash:net family inet6 -exist
+flush private-v6
+add private-v6 ::/127 -exist
+add private-v6 fc00::/7 -exist
+add private-v6 fe80::/10 -exist
+add private-v6 ff00::/8 -exist
