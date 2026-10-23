@@ -85,6 +85,19 @@ RIR_CREDIT = ("RIR delegated statistics (RIPE NCC, APNIC, ARIN, LACNIC, "
               "AFRINIC)")
 RIS_CREDIT = "RIPE NCC RIS routing data"
 
+# The last published release's stats.json, what the day-over-day guard
+# compares a build against. GitHub redirects it to the asset.
+PREVIOUS_STATS_URL = ("https://github.com/Arman2122/IR-Geo-DB/releases/latest/"
+                      "download/stats.json")
+
+# The most a set may lose against the previous release, in whole percent. A
+# drop of exactly the limit passes; only a larger one refuses the publish.
+IR_IPV4_SHRINK_PCT = 5
+IR_DOMAIN_SHRINK_PCT = 10
+BLOCKLIST_SHRINK_PCT = 60
+BLOCKLIST_SETS = ("ads", "ads-ir", "malware", "phishing", "cryptominers",
+                  "nsfw", "block-all")
+
 
 def log(msg: str = "") -> None:
     print(msg, flush=True)
@@ -812,6 +825,93 @@ def sanity_check(ips: dict, doms: dict) -> None:
     log("  sanity checks passed")
 
 
+def previous_stats(url: str = PREVIOUS_STATS_URL) -> dict | None:
+    """The previous release's stats.json, or None when it cannot be had: no
+    release yet, GitHub down, a non-200 answer, or a body that is not an object."""
+    try:
+        resp = fetch.http_get(url, {"User-Agent": fetch.USER_AGENT}, timeout=60)
+        if resp.status != 200:
+            return None
+        data = json.loads(resp.body)
+    except Exception:   # any failure skips the guard; it never stops the build
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _dig(stats, *path):
+    """stats[path[0]][path[1]]..., or None as soon as a step is missing."""
+    for key in path:
+        if not isinstance(stats, dict):
+            return None
+        stats = stats.get(key)
+    return stats
+
+
+def _count(value) -> int | None:
+    numeric = isinstance(value, (int, float)) and not isinstance(value, bool)
+    return int(value) if numeric else None
+
+
+def _domain_count(stats, slug: str) -> int | None:
+    parts = [_count(_dig(stats, "domain_sets", slug, k)) for k in ("suffix", "full")]
+    return None if None in parts else sum(parts)
+
+
+def shrink_problems(now: dict, prev: dict | None) -> list[str]:
+    """Sets that lost more than their limit since the previous release.
+
+    `now` and `prev` are stats.json dicts. A set is skipped, with a logged
+    reason, when its `sources` differ from the previous release's: a source
+    that came or went is meant to change the size. Anything the previous
+    release does not record (an older schema), or a previous value of 0, skips
+    that comparison. Growth never fails.
+    """
+    if not isinstance(now, dict) or not isinstance(prev, dict):
+        return []
+    checks = [("ir IPv4 addresses",
+               lambda s: _count(_dig(s, "audit", "ir_ipv4_addresses")),
+               ("ip_sets", "ir"), IR_IPV4_SHRINK_PCT),
+              ("ir domains", lambda s: _domain_count(s, "ir"),
+               ("domain_sets", "ir"), IR_DOMAIN_SHRINK_PCT)]
+    for slug in BLOCKLIST_SETS:
+        checks.append((slug, lambda s, slug=slug: _domain_count(s, slug),
+                       ("domain_sets", slug), BLOCKLIST_SHRINK_PCT))
+
+    problems = []
+    for label, value, where, limit in checks:
+        old, new = value(prev), value(now)
+        if old is None or new is None or old <= 0:
+            continue
+        old_src, new_src = (_dig(s, *where, "sources") for s in (prev, now))
+        if not isinstance(old_src, list) or not isinstance(new_src, list):
+            log(f"  skip {label}: previous release lists no sources")
+        elif sorted(map(str, old_src)) != sorted(map(str, new_src)):
+            log(f"  skip {label}: sources changed")
+        elif (old - new) * 100 > old * limit:     # integers: the limit is exact
+            problems.append(f"{label}: {old:,} → {new:,} "
+                            f"(−{(old - new) / old * 100:.1f}%, "
+                            f"limit −{limit}%)")
+    return problems
+
+
+def enforce_shrink_limits(ips: dict, doms: dict, audit: dict,
+                          prev: dict | None, allow_shrink: bool) -> None:
+    """Refuse to publish when a set shrank past its day-over-day limit."""
+    if prev is None:
+        log("  previous release unavailable — guard skipped")
+        return
+    now = {"audit": audit,
+           "ip_sets": {k: v.stats() for k, v in ips.items()},
+           "domain_sets": {k: v.stats() for k, v in doms.items()}}
+    problems = shrink_problems(now, prev)
+    for p in problems:
+        log(f"  {'warn' if allow_shrink else 'FAIL'} {p}")
+    if problems and not allow_shrink:
+        sys.exit("set shrank beyond its limit — refusing to publish")
+    if not problems:
+        log("  day-over-day guard passed")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--outdir", default="dist")
@@ -831,6 +931,9 @@ def main() -> None:
                     help="publish even if a set shrank past its day-over-day "
                          "limit, once a human has reviewed the change")
     args = ap.parse_args()
+    # the guard's messages use → and −, which a Windows pipe (cp1252) cannot encode
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="replace")
 
     now = datetime.now(timezone.utc)
     version = args.version or now.strftime("v%Y.%m.%d")
@@ -866,6 +969,7 @@ def main() -> None:
 
     log("\n[4/7] sanity checks")
     sanity_check(ips, doms)
+    enforce_shrink_limits(ips, doms, audit, previous_stats(), args.allow_shrink)
 
     log("\n[5/7] emitting formats")
     for slug, s in ips.items():
