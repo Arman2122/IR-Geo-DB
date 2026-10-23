@@ -81,6 +81,37 @@ def range_to_cidrs(start: str, count: int) -> list:
     return list(ipaddress.summarize_address_range(first, last))
 
 
+def exclude_networks(base: list, drop: list) -> tuple[list, int]:
+    """Remove every part of ``base`` that overlaps ``drop``.
+
+    Returns the remainder and the number of *addresses* removed; a prefix
+    count would be misleading, since excluding a /24 from a /8 leaves more
+    prefixes than it started with.
+    """
+    if not drop:
+        return base, 0
+    drop_by_ver = {4: sorted(n for n in drop if n.version == 4),
+                   6: sorted(n for n in drop if n.version == 6)}
+    before = sum(n.num_addresses for n in base)
+    kept = []
+    for net in base:
+        pieces = [net]
+        for bad in drop_by_ver[net.version]:
+            if not pieces:
+                break
+            nxt = []
+            for piece in pieces:
+                if not piece.overlaps(bad):
+                    nxt.append(piece)
+                elif bad.subnet_of(piece):
+                    nxt.extend(piece.address_exclude(bad))
+                # otherwise piece sits inside bad and is dropped
+            pieces = nxt
+        kept.extend(pieces)
+    kept = sorted(ipaddress.collapse_addresses(kept)) if kept else []
+    return kept, before - sum(n.num_addresses for n in kept)
+
+
 # --------------------------------------------------------------- domain sets
 
 
