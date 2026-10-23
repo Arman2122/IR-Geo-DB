@@ -55,6 +55,8 @@ VALUES = {
         "202468 185.166.104.0/24",  # ArvanCloud (ORG-NAAP1-RIPE)
         "202468 185.143.232.0/24",  # ArvanCloud, inside its published list
         "202319 5.34.192.0/22",     # Sotoon (ORG-HUCC1-RIPE)
+        "60423 185.204.168.0/24",   # Derak, inside its published list
+        "60423 10.200.0.0/24",      # Derak announcing a bogon
     ],
     "ris-v6": ["58224 2001:db8::/32", "202468 2a0e:97c0::/32"],
     "ripe-org-org-naap1-ripe": ["AS202468"],
@@ -166,8 +168,9 @@ eq(audit["providers"]["ArvanCloud"],
     "list_addresses": 1024, "addresses": 1280},
    "audit.providers shape: networks, list and their union")
 eq(audit["providers"]["Derak"],
-   {"asns": [60423], "network_addresses": 0, "list_addresses": 1040,
-    "addresses": 1024}, "a provider's bogon is counted in its list, not its total")
+   {"asns": [60423], "network_addresses": 256, "list_addresses": 1024,
+    "addresses": 1024},
+   "every provider count is after bogon removal, announced and listed alike")
 eq(audit["providers"]["Sotoon"]["addresses"], 1024,
    "a provider with no list gets its announced networks")
 eq(audit["providers"]["ParsPack"]["asns"], [], "a provider with no org has no ASNs")

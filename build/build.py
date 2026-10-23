@@ -213,14 +213,17 @@ def _provider_networks(h: fetch.Harvest, routes: list | None,
         list4, list6, n_bad = parse_networks(
             [v for key in info["lists"] for v in h.get(key)])
         bad += n_bad
-        own, _ = _subtract(announced + list4 + list6, private)
+        # every count is after collapse and bogon removal (Ruling R2)
+        networks, _ = _subtract(announced, private)
+        listed, _ = _subtract(list4 + list6, private)
+        own = _collapse(networks + listed)
         everything += own
         report[name] = {"asns": sorted(asns),
-                        "network_addresses": _addresses(announced),
-                        "list_addresses": _addresses(list4),
+                        "network_addresses": _addresses(networks),
+                        "list_addresses": _addresses(listed),
                         "addresses": _addresses(own)}
-        log(f"  {name:<12} {len(asns)} ASNs: {_addresses(announced)} IPv4 "
-            f"addresses announced, {_addresses(list4)} listed, "
+        log(f"  {name:<12} {len(asns)} ASNs: {_addresses(networks)} IPv4 "
+            f"addresses announced, {_addresses(listed)} listed, "
             f"{_addresses(own)} in all")
     nets = _collapse(everything)
     cdn = IPSet(slug="ir-cdn", title=IP_ROLES["ir-cdn"][0],
