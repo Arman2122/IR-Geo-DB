@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import emitters  # noqa: E402
+import fetch  # noqa: E402
 import geodat  # noqa: E402
 import sources  # noqa: E402
 from emitters import BuildContext  # noqa: E402
@@ -91,7 +92,7 @@ def exclude_networks(base: list, drop: list) -> tuple[list, int]:
     return kept, before - sum(n.num_addresses for n in kept)
 
 
-def build_ip_sets(h: sources.Harvest, strict_exclude: bool) -> tuple[dict, dict]:
+def build_ip_sets(h: fetch.Harvest, strict_exclude: bool) -> tuple[dict, dict]:
     audit: dict = {}
 
     registry_raw = h.any_of("rir-")
@@ -162,7 +163,7 @@ def build_ip_sets(h: sources.Harvest, strict_exclude: bool) -> tuple[dict, dict]
              "malware": malware_ip, "phishing": phishing_ip}, audit)
 
 
-def build_domain_sets(h: sources.Harvest) -> dict[str, DomainSet]:
+def build_domain_sets(h: fetch.Harvest) -> dict[str, DomainSet]:
     out: dict[str, DomainSet] = {}
 
     out["ir"] = make_domainset(
@@ -428,7 +429,7 @@ def write_configs(ctx: BuildContext, base_url: str) -> None:
                          "RouterOS self-updating installer", 1, [])
 
 
-def write_metadata(ctx: BuildContext, ips: dict, doms: dict, h: sources.Harvest,
+def write_metadata(ctx: BuildContext, ips: dict, doms: dict, h: fetch.Harvest,
                    audit: dict) -> dict:
     stats = {
         "version": ctx.version,
@@ -592,6 +593,8 @@ def main() -> None:
     ap.add_argument("--version", default=None)
     ap.add_argument("--cache", default=None,
                     help="cache downloads here (local iteration only)")
+    ap.add_argument("--lkg-dir", default=".lkg",
+                    help="state store: the last validated copy of each source")
     ap.add_argument("--base-url", default=None)
     ap.add_argument("--resolver", default="178.22.122.100")
     ap.add_argument("--require-binaries", action="store_true")
@@ -616,7 +619,11 @@ def main() -> None:
 
     log(f"IR-Geo-DB {version}\n")
     log("[1/7] fetching sources")
-    h = sources.harvest(cache_dir=args.cache, log=log)
+    try:
+        h = fetch.harvest(sources.SOURCES, fetch.StateStore(args.lkg_dir),
+                          cache_dir=args.cache, log=log)
+    except fetch.SourceUnavailable as exc:
+        sys.exit(f"ERROR: {exc}")
 
     log("\n[2/7] building IP datasets")
     ips, audit = build_ip_sets(h, args.strict_exclude)

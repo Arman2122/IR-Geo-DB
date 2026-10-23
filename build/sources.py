@@ -9,29 +9,23 @@ An address is Iranian only if a RIR delegated it to an organisation whose
 registered country is IR. ipverse and ipdeny are fetched purely to cross-check
 that parsing and never contribute addresses.
 
+How a source is fetched and when its body is trusted lives in fetch.py.
+
 Standard library only — a GitHub Actions runner needs no install step.
 """
 
 from __future__ import annotations
 
 import gzip
-import io
 import ipaddress
 import json
-import os
 import re
 import sys
-import time
-import urllib.error
-import urllib.request
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import NamedTuple
 
 import geodat
 from model import clean_domain
-
-USER_AGENT = "IR-Geo-DB/1.0 (+https://github.com/Arman2122/IR-Geo-DB)"
-TIMEOUT = 120
 
 
 @dataclass
@@ -46,6 +40,16 @@ class Source:
     homepage: str = ""
     optional: bool = False    # a failure here warns instead of aborting
     note: str = ""
+    # how fetch.py acquires and trusts it; the defaults reject nothing
+    mirrors: tuple[str, ...] = ()     # tried in order after url
+    min_entries: int = 0              # fewer parsed entries: reject the body
+    min_bytes: int = 0                # a smaller raw body: reject it
+    max_shrink: float = 0.5           # reject a body with fewer than
+                                      # (1 - max_shrink) x the stored copy's
+                                      # entries, once that copy has >= 100
+    max_age_days: int | None = None   # reject a Last-Modified older than this
+    max_stale_days: int = 14          # how long the stored copy may stand in
+    attribution: str = ""             # text the README and stats.json must carry
 
     @property
     def credit(self) -> str:
@@ -193,41 +197,6 @@ SOURCES: list[Source] = [
 ]
 
 BY_KEY = {s.key: s for s in SOURCES}
-
-
-# ------------------------------------------------------------------ fetching
-
-
-def fetch(url: str, cache_dir: str | None = None, retries: int = 4) -> bytes:
-    """GET with retries and an optional on-disk cache for local iteration."""
-    cache_path = None
-    if cache_dir:
-        os.makedirs(cache_dir, exist_ok=True)
-        safe = re.sub(r"[^A-Za-z0-9._-]", "_", url)[-150:]
-        cache_path = os.path.join(cache_dir, safe)
-        if os.path.exists(cache_path) and os.path.getsize(cache_path) > 0:
-            with open(cache_path, "rb") as fh:
-                return fh.read()
-
-    last = None
-    for attempt in range(retries):
-        try:
-            req = urllib.request.Request(
-                url, headers={"User-Agent": USER_AGENT,
-                              "Accept-Encoding": "gzip, identity"})
-            with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
-                raw = resp.read()
-                if resp.headers.get("Content-Encoding") == "gzip":
-                    raw = gzip.GzipFile(fileobj=io.BytesIO(raw)).read()
-            if cache_path:
-                with open(cache_path, "wb") as fh:
-                    fh.write(raw)
-            return raw
-        except (urllib.error.URLError, OSError, TimeoutError) as exc:
-            last = exc
-            if attempt < retries - 1:
-                time.sleep(2 ** attempt * 2)
-    raise RuntimeError(f"fetch failed after {retries} attempts: {url} ({last})")
 
 
 # ------------------------------------------------------------------- parsers
@@ -541,49 +510,16 @@ PARSERS = {
 }
 
 
-# ------------------------------------------------------------------- harvest
-
-
-@dataclass
-class Harvest:
-    values: dict[str, list[str]] = field(default_factory=dict)
-    failed: dict[str, str] = field(default_factory=dict)
-    bytes_read: dict[str, int] = field(default_factory=dict)
-
-    def get(self, key: str) -> list[str]:
-        return self.values.get(key, [])
-
-    def any_of(self, prefix: str) -> list[str]:
-        out = []
-        for key, vals in self.values.items():
-            if key.startswith(prefix):
-                out.extend(vals)
-        return out
-
-
-def harvest(keys: list[str] | None = None, cache_dir: str | None = None,
-            log=print) -> Harvest:
-    """Fetch and parse every configured source (or a named subset)."""
-    result = Harvest()
-    wanted = [s for s in SOURCES if keys is None or s.key in keys]
-    for src in wanted:
-        try:
-            raw = fetch(src.url, cache_dir=cache_dir)
-            values = PARSERS[src.parser](raw).values
-            result.values[src.key] = values
-            result.bytes_read[src.key] = len(raw)
-            log(f"  ok    {src.key:<22} {len(values):>7} entries  "
-                f"({len(raw) / 1024:.0f} KiB)")
-        except Exception as exc:                       # noqa: BLE001
-            result.failed[src.key] = str(exc)
-            level = "warn " if src.optional else "ERROR"
-            log(f"  {level} {src.key:<22} {exc}")
-            if not src.optional:
-                raise
-    return result
-
-
 if __name__ == "__main__":
-    cache = sys.argv[1] if len(sys.argv) > 1 else None
-    h = harvest(cache_dir=cache)
+    # every source against a throwaway state store: python3 build/sources.py [cache]
+    import tempfile
+
+    import fetch
+
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            h = fetch.harvest(SOURCES, fetch.StateStore(tmp),
+                              cache_dir=sys.argv[1] if len(sys.argv) > 1 else None)
+        except fetch.SourceUnavailable as exc:
+            sys.exit(f"ERROR: {exc}")
     print(f"\n{len(h.values)} sources ok, {len(h.failed)} failed")
