@@ -14,6 +14,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 import zipfile
 from bisect import bisect_right
 from datetime import datetime, timezone
@@ -174,42 +175,69 @@ def _ris_generated(h: fetch.Harvest) -> str:
 
 
 def _bgp_adjust(h: fetch.Harvest, reg_v4: list, reg_v6: list,
-                ir_asns: set[int], routes: list | None
+                ir_asns: set[int], routes: list | None,
+                neutral_asns: set[int] = frozenset()
                 ) -> tuple[list, list, dict]:
     """Registry IR → BGP add/remove → anomaly limits (spec §3).
 
-    Raises bgp.BGPAnomaly when the change is beyond the limits: a leak or a
-    broken dump, which must fail the build rather than publish.
+    `neutral_asns` are the providers' own ASNs (bgp.adjust says how they
+    count). Raises bgp.BGPAnomaly when the change is beyond the limits: a
+    leak or a broken dump, which must fail the build rather than publish.
     """
     report = {"applied": False, "ir_asns": 0,
               "ris_generated": _ris_generated(h), "registry_addresses": 0,
               "added_prefixes": 0, "added_addresses": 0,
-              "removed_prefixes": 0, "removed_addresses": 0}
+              "removed_prefixes": 0, "removed_addresses": 0,
+              "excluded_prefixes": 0, "excluded_addresses": 0,
+              "registry_addresses_v6": 0, "added_addresses_v6": 0,
+              "removed_addresses_v6": 0}
     if routes is None:
         return reg_v4, reg_v6, report
 
-    adj = bgp.adjust(reg_v4 + reg_v6, routes, ir_asns)
+    adj = bgp.adjust(reg_v4 + reg_v6, routes, ir_asns, neutral_asns)
     bgp.check_limits(adj)
-    # IPv4 only, like the address counts, so each prefix count pairs with
-    # its address count
+    # IPv4 only, like the unsuffixed address counts, so each prefix count
+    # pairs with its address count
     added4 = sum(1 for n in adj.added if n.version == 4)
     removed4 = sum(1 for n in adj.removed if n.version == 4)
+    excluded4 = [n for n in adj.excluded if n.version == 4]
     report.update(applied=True, ir_asns=len(ir_asns),
                   registry_addresses=adj.registry_addresses,
                   added_prefixes=added4, added_addresses=adj.added_addresses,
                   removed_prefixes=removed4,
-                  removed_addresses=adj.removed_addresses)
+                  removed_addresses=adj.removed_addresses,
+                  excluded_prefixes=len(excluded4),
+                  excluded_addresses=adj.excluded_addresses,
+                  registry_addresses_v6=adj.registry_addresses_v6,
+                  added_addresses_v6=adj.added_addresses_v6,
+                  removed_addresses_v6=adj.removed_addresses_v6)
     log(f"  BGP adjustment ({len(ir_asns)} IR ASNs, {len(routes)} RIS routes): "
         f"+{added4} IPv4 prefixes (+{adj.added_addresses} addresses), "
         f"-{removed4} (-{adj.removed_addresses} addresses) on "
         f"{adj.registry_addresses} registry IPv4 addresses; IPv6 "
         f"+{len(adj.added) - added4} / -{len(adj.removed) - removed4} prefixes")
+    if adj.excluded:
+        # few by design, and each one is worth a look
+        log(f"  not added, under a foreign route: "
+            f"{', '.join(map(str, adj.excluded))} "
+            f"({adj.excluded_addresses} IPv4 addresses)")
     return ([n for n in adj.networks if n.version == 4],
             [n for n in adj.networks if n.version == 6], report)
 
 
+def _provider_asns(h: fetch.Harvest) -> dict[str, set[int]]:
+    """Each provider's ASNs: every one RIPE holds for its organisations."""
+    out = {}
+    for name, info in sources.PROVIDERS.items():
+        out[name] = set()
+        for org in info["orgs"]:
+            out[name] |= bgp.asns_from(h.get(f"ripe-org-{org.lower()}"))
+    return out
+
+
 def _provider_networks(h: fetch.Harvest, routes: list | None,
-                       private: list) -> tuple[IPSet, dict]:
+                       private: list, provider_asns: dict[str, set[int]]
+                       ) -> tuple[IPSet, dict]:
     """`ir-cdn`: every provider's published lists plus what its ASNs announce.
 
     The ASNs are the ones RIPE holds for each provider organisation. Bogons
@@ -219,9 +247,7 @@ def _provider_networks(h: fetch.Harvest, routes: list | None,
     """
     report, everything, bad = {}, [], 0
     for name, info in sources.PROVIDERS.items():
-        asns: set[int] = set()
-        for org in info["orgs"]:
-            asns |= bgp.asns_from(h.get(f"ripe-org-{org.lower()}"))
+        asns = provider_asns[name]
         announced = bgp.announced_by(routes, asns) if routes and asns else []
         list4, list6, n_bad = parse_networks(
             [v for key in info["lists"] for v in h.get(key)])
@@ -260,8 +286,13 @@ def build_ip_sets(h: fetch.Harvest, strict_exclude: bool) -> tuple[dict, dict]:
         f"{reg_bad} malformed)")
 
     routes = _ris_routes(h)
-    ir_v4, ir_v6, audit["bgp"] = _bgp_adjust(h, reg_v4, reg_v6, ir_asns,
-                                             routes)
+    # The providers' ASNs, the same ones `ir-cdn` is built from. Those
+    # registered abroad would otherwise count as foreign and remove the
+    # provider's own Iranian space from `ir` (bgp.adjust).
+    provider_asns = _provider_asns(h)
+    ir_v4, ir_v6, audit["bgp"] = _bgp_adjust(
+        h, reg_v4, reg_v6, ir_asns, routes,
+        set().union(*provider_asns.values()))
 
     cloud_v4, cloud_v6, _ = parse_networks(h.any_of("cloud-"))
     cloud = cloud_v4 + cloud_v6
@@ -284,7 +315,8 @@ def build_ip_sets(h: fetch.Harvest, strict_exclude: bool) -> tuple[dict, dict]:
                malformed=reg_bad)
 
     private_nets = [ipaddress.ip_network(p) for p in PRIVATE_RANGES]
-    cdn, audit["providers"] = _provider_networks(h, routes, private_nets)
+    cdn, audit["providers"] = _provider_networks(h, routes, private_nets,
+                                                 provider_asns)
 
     full = make_ipset("ir-full", IP_ROLES["ir-full"][0],
                       [str(n) for n in ir.all_networks() + cdn.all_networks()],
@@ -831,17 +863,43 @@ def sanity_check(ips: dict, doms: dict) -> None:
     log("  sanity checks passed")
 
 
-def previous_stats(url: str = PREVIOUS_STATS_URL) -> dict | None:
+def previous_stats(url: str = PREVIOUS_STATS_URL,
+                   sleep=time.sleep) -> dict | None:
     """The previous release's stats.json, or None when it cannot be had: no
-    release yet, GitHub down, a non-200 answer, or a body that is not an object."""
+    release yet, GitHub down, a non-200 answer, or a body that is not an object.
+
+    A None switches the day-over-day guard off, so one network blip must not
+    cause it: the request goes through fetch's retrying getter, the same
+    policy as every source (network errors and 5xx retried, a 404 not, since
+    it means there is no release yet). Why the guard is skipped is logged.
+    """
+    def get(u: str, headers: dict) -> fetch.Response:
+        # looked up at call time, so the tests can stand in for it
+        return fetch.http_get(u, headers, timeout=60)
+
+    def skip(why: str) -> None:
+        log(f"  previous release stats.json: {why}")
+
     try:
-        resp = fetch.http_get(url, {"User-Agent": fetch.USER_AGENT}, timeout=60)
-        if resp.status != 200:
-            return None
-        data = json.loads(resp.body)
-    except Exception:   # any failure skips the guard; it never stops the build
+        resp = fetch._get(url, {"User-Agent": fetch.USER_AGENT}, get, sleep)
+    except fetch.FetchError as exc:
+        skip("no release yet (HTTP 404)" if exc.status == 404 else str(exc))
         return None
-    return data if isinstance(data, dict) else None
+    except Exception as exc:   # any failure skips the guard; never the build
+        skip(f"{type(exc).__name__}: {exc}")
+        return None
+    if resp.status != 200:
+        skip(f"HTTP {resp.status}")
+        return None
+    try:
+        data = json.loads(resp.body)
+    except Exception as exc:       # JSONDecodeError, UnicodeDecodeError, ...
+        skip(f"not JSON ({type(exc).__name__})")
+        return None
+    if not isinstance(data, dict):
+        skip(f"not a JSON object ({type(data).__name__})")
+        return None
+    return data
 
 
 def _dig(stats, *path):
@@ -956,9 +1014,13 @@ def main() -> None:
 
     log(f"IR-Geo-DB {version}\n")
     log("[1/7] fetching sources")
+    store = fetch.StateStore(args.lkg_dir)
+    # The state branch republishes every input, so it carries their licences
+    # and attributions. Written before the harvest: the workflow saves the
+    # store after a failed build too.
+    store.write_notice(sources.SOURCES)
     try:
-        h = fetch.harvest(sources.SOURCES, fetch.StateStore(args.lkg_dir),
-                          cache_dir=args.cache, log=log)
+        h = fetch.harvest(sources.SOURCES, store, cache_dir=args.cache, log=log)
     except fetch.SourceUnavailable as exc:
         sys.exit(f"ERROR: {exc}")
 

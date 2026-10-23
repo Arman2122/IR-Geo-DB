@@ -81,6 +81,32 @@ def check(ok: bool, label: str) -> None:
         print(f"  ok    {label}")
 
 
+def provider_checks(stats: dict) -> list[tuple[str, bool | None]]:
+    """(label, passed) for each provider `ir-cdn` must hold addresses of;
+    passed is None when this build had no way to find them.
+
+    ArvanCloud publishes its own list, so it is always checked. Sotoon
+    publishes none: its addresses come only from what its ASNs announce in
+    RIS. Without IPv4 routing data (RIS dropped, unreadable, or IPv6 only) it
+    is legitimately 0, and losing RIS must never block a release on its own
+    (spec §3 and §10).
+    """
+    audit = stats.get("audit") or {}
+    providers = audit.get("providers") or {}
+    ris_v4 = (stats.get("sources") or {}).get("ris-v4") or {}
+    routed = (bool((audit.get("bgp") or {}).get("applied"))
+              and ris_v4.get("status") not in (None, "dropped"))
+    out = []
+    for name, needs_routing in (("ArvanCloud", False), ("Sotoon", True)):
+        addresses = (providers.get(name) or {}).get("addresses", 0)
+        label = f"audit.providers: {name} has {addresses} IPv4 addresses in ir-cdn"
+        if needs_routing and not routed:
+            out.append((f"{label} (no IPv4 routing data, not checked)", None))
+        else:
+            out.append((label, addresses > 0))
+    return out
+
+
 def load_cidrs(path: str) -> list:
     nets = []
     with open(path, encoding="utf-8") as fh:
@@ -344,11 +370,11 @@ def main() -> int:
     missing = [src.key for src in sources.SOURCES if src.key not in recorded]
     check(not missing, f"stats.json has a sources entry for each of the "
                        f"{len(sources.SOURCES)} registry keys (missing {missing})")
-    providers = stats.get("audit", {}).get("providers", {})
-    for name in ("ArvanCloud", "Sotoon"):
-        addresses = providers.get(name, {}).get("addresses", 0)
-        check(addresses > 0,
-              f"audit.providers: {name} has {addresses} IPv4 addresses in ir-cdn")
+    for label, passed in provider_checks(stats):
+        if passed is None:
+            print(f"  skip  {label}")
+        else:
+            check(passed, label)
 
     # ------------------------------------------------------------ integrity
     print("\nIntegrity")

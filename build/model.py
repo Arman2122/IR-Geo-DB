@@ -86,7 +86,8 @@ def exclude_networks(base: list, drop: list) -> tuple[list, int]:
 
     Returns the remainder and the number of *addresses* removed; a prefix
     count would be misleading, since excluding a /24 from a /8 leaves more
-    prefixes than it started with.
+    prefixes than it started with. ``base`` may mix IPv4 and IPv6; the
+    remainder is collapsed per family, IPv4 first.
     """
     if not drop:
         return base, 0
@@ -108,7 +109,10 @@ def exclude_networks(base: list, drop: list) -> tuple[list, int]:
                 # otherwise piece sits inside bad and is dropped
             pieces = nxt
         kept.extend(pieces)
-    kept = sorted(ipaddress.collapse_addresses(kept)) if kept else []
+    # collapse_addresses raises on a mixed list, and a provider list with one
+    # bad IPv4 and one bad IPv6 entry must not stop the build
+    kept = [n for v in (4, 6) for n in sorted(ipaddress.collapse_addresses(
+        [k for k in kept if k.version == v]))]
     return kept, before - sum(n.num_addresses for n in kept)
 
 

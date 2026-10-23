@@ -124,9 +124,11 @@ def render(stats: dict, version: str) -> str:
 
     add("## Iranian IP provenance")
     add("")
-    add("Addresses start from the Regional Internet Registries' own delegation "
-        "records. An address is Iranian only if a RIR delegated it to an "
-        "organisation registered in Iran — no geolocation guessing.")
+    add("Registry, then routing — no geolocation guessing. Addresses start "
+        "from the Regional Internet Registries' own delegation records: the "
+        "blocks delegated to organisations registered in Iran. RIPE NCC's "
+        "BGP routing data then corrects that, and the most specific route "
+        "announced for an address decides whose it is.")
     add("")
     if bgp.get("applied"):
         add(f"- Adjusted with BGP routing data from RIPE NCC RIS "

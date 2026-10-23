@@ -28,6 +28,7 @@ import build  # noqa: E402
 import fetch  # noqa: E402
 import release_notes  # noqa: E402
 import sources  # noqa: E402
+import verify  # noqa: E402
 from emitters import BuildContext, ip_ipset  # noqa: E402
 from model import IPSet  # noqa: E402
 
@@ -55,8 +56,10 @@ VALUES = {
         "58224 10.0.0.0/16",        # the registry block, announced from Iran
         "64500 10.0.2.0/24",        # foreign more-specific inside it: removed
         "58224 20.0.0.0/24",        # Iranian origin outside the registry: added
-        "44244 104.16.5.0/24",      # added by BGP, but inside Cloudflare
-        "13335 104.16.0.0/13",      # Cloudflare's own announcement
+        # added by BGP, but inside Cloudflare's published ranges. Cloudflare's
+        # own covering route is left out on purpose: under it, the /24 would
+        # be hijack-shaped and never added, and the cloud guard untested
+        "44244 104.16.5.0/24",
         "202468 185.166.104.0/24",  # ArvanCloud (ORG-NAAP1-RIPE)
         "202468 185.143.232.0/24",  # ArvanCloud, inside its published list
         "202319 5.34.192.0/22",     # Sotoon (ORG-HUCC1-RIPE)
@@ -160,8 +163,10 @@ eq(audit["foreign_cloud_overlap_addresses"], 256,
 eq(audit["bgp"], {"applied": True, "ir_asns": 2, "ris_generated": "",
                   "registry_addresses": 65536, "added_prefixes": 2,
                   "added_addresses": 512, "removed_prefixes": 1,
-                  "removed_addresses": 256},
-   "audit.bgp shape and IPv4 counts")
+                  "removed_addresses": 256, "excluded_prefixes": 0,
+                  "excluded_addresses": 0, "registry_addresses_v6": 2 ** 96,
+                  "added_addresses_v6": 0, "removed_addresses_v6": 0},
+   "audit.bgp shape: IPv4 counts, excluded additions and IPv6 addresses")
 eq(audit["ir_ipv4_addresses"], 65536, "ir_ipv4_addresses is after adjustment")
 eq(ir.sources, ["RIR delegated statistics (RIPE NCC, APNIC, ARIN, LACNIC, "
                 "AFRINIC)", "RIPE NCC RIS routing data"], "ir credits")
@@ -223,7 +228,9 @@ eq(a["bgp"]["ris_generated"], "2026-10-23T09:00:00Z",
 NOT_APPLIED = {"applied": False, "ir_asns": 0, "ris_generated": "",
                "registry_addresses": 0, "added_prefixes": 0,
                "added_addresses": 0, "removed_prefixes": 0,
-               "removed_addresses": 0}
+               "removed_addresses": 0, "excluded_prefixes": 0,
+               "excluded_addresses": 0, "registry_addresses_v6": 0,
+               "added_addresses_v6": 0, "removed_addresses_v6": 0}
 ips2, a2 = build.build_ip_sets(harvest(ris_v4=None, ris_v6=None), True)
 eq(a2["bgp"], NOT_APPLIED, "no RIS data: BGP not applied, counts 0")
 eq(strs(ips2["ir"].v4), ["10.0.0.0/16"], "no RIS data: ir is registry-only")
@@ -248,6 +255,51 @@ ips4, a4 = build.build_ip_sets(harvest(), False)
 ok(overlaps(ips4["ir"].v4, "104.16.5.0/24"),
    "--no-strict-exclude reports the cloud overlap without removing it")
 eq(a4["foreign_cloud_excluded"], False, "audit records the cloud guard was off")
+
+# Provider ASNs registered abroad are neutral (review I2): AS41227 stands for
+# Sotoon's ORG-IB117-RIPE network in the Netherlands. The build passes every
+# ASN found under the ripe-org-* keys, the same set ir-cdn is built from.
+SOTOON_NL = VALUES["ris-v4"] + ["41227 10.0.9.0/24", "41227 193.29.17.0/24"]
+ips5, a5 = build.build_ip_sets(harvest(ris_v4=SOTOON_NL), True)
+eq(a5["bgp"]["removed_addresses"], 512,
+   "control: with no org lookup, the abroad ASN's /24 is removed as foreign")
+ips5, a5 = build.build_ip_sets(harvest(ris_v4=SOTOON_NL,
+                                       ripe_org_org_ib117_ripe=["AS41227"]),
+                               True)
+ok(any(net("10.0.9.0/24").subnet_of(n) for n in ips5["ir"].v4),
+   "provider ASN abroad: its route inside registry space stays in ir")
+eq((a5["bgp"]["removed_addresses"], a5["bgp"]["added_addresses"]), (256, 512),
+   "provider ASN abroad: nothing more removed, nothing added")
+ok(not overlaps(ips5["ir"].v4, "193.29.17.0/24"),
+   "provider ASN abroad: its route outside the registry is not added to ir")
+ok(overlaps(ips5["ir-cdn"].v4, "193.29.17.0/24"),
+   "provider ASN abroad: ...it is in ir-cdn")
+eq(a5["providers"]["Sotoon"]["asns"], [41227, 202319],
+   "provider ASN abroad: the same ASNs feed ir-cdn")
+
+# Hijack-shaped additions are left out and counted (review M2)
+ips6, a6 = build.build_ip_sets(harvest(ris_v4=VALUES["ris-v4"] + [
+    "58224 30.0.1.0/24", "64501 30.0.0.0/16"]), True)
+ok(not overlaps(ips6["ir"].v4, "30.0.1.0/24"),
+   "an Iranian /24 under a foreign /16 is not added to ir")
+eq((a6["bgp"]["excluded_prefixes"], a6["bgp"]["excluded_addresses"],
+    a6["bgp"]["added_addresses"]), (1, 256, 512),
+   "audit.bgp counts the excluded prefix and its addresses")
+
+# Mixed-family subtraction (review I4): one provider's v4 and v6 entries that
+# each strictly contain a bogon crashed exclude_networks' collapse
+private_nets = [net(p) for p in build.PRIVATE_RANGES]
+got = raises(lambda: build._subtract([net("10.0.0.0/7"), net("fc00::/6")],
+                                     private_nets), TypeError)
+eq(got, None, "mixed-family _subtract does not raise")
+eq(strs(build._subtract([net("10.0.0.0/7"), net("fc00::/6")],
+                        private_nets)[0]),
+   ["11.0.0.0/8", "fe00::/9", "fec0::/10"],
+   "mixed-family _subtract: each family keeps its own remainder, v4 first")
+ips7, a7 = build.build_ip_sets(harvest(derak_v4=["10.0.0.0/7"],
+                                       derak_v6=["fc00::/6"]), True)
+eq(a7["providers"]["Derak"]["list_addresses"], 2 ** 24,
+   "a provider list with a v4 and a v6 bogon-containing range builds")
 
 # ------------------------------------------------------------- domain sets
 
@@ -331,6 +383,40 @@ ok("values" not in src["psl"], "no values in stats.json")
 eq(stats["sources_failed"], {"ris-v4": "primary: HTTP 503"}, "sources_failed stays")
 ok("psl" in stats["sources_ok"], "sources_ok stays")
 eq(on_disk["sources"], src, "stats.json on disk carries the sources block")
+
+# ------------------------------------------- verify's provider checks (I1)
+
+
+def checks_for(applied, ris_v4_status, arvan=100, sotoon=0) -> dict:
+    """{provider: passed} from verify.provider_checks for a stats dict."""
+    st = {"audit": {"bgp": {"applied": applied},
+                    "providers": {"ArvanCloud": {"addresses": arvan},
+                                  "Sotoon": {"addresses": sotoon}}},
+          "sources": ({} if ris_v4_status is None
+                      else {"ris-v4": {"status": ris_v4_status}})}
+    return {label.split()[1]: passed
+            for label, passed in verify.provider_checks(st)}
+
+
+eq(checks_for(False, "dropped"), {"ArvanCloud": True, "Sotoon": None},
+   "verify: RIS dropped, so the Sotoon check is skipped, ArvanCloud kept")
+eq(checks_for(True, "dropped"), {"ArvanCloud": True, "Sotoon": None},
+   "verify: ris-v4 dropped with only ris-v6 applied: Sotoon skipped")
+eq(checks_for(False, "stale"), {"ArvanCloud": True, "Sotoon": None},
+   "verify: unreadable RIS (BGP not applied): Sotoon skipped")
+eq(checks_for(True, None), {"ArvanCloud": True, "Sotoon": None},
+   "verify: no ris-v4 record at all: Sotoon skipped")
+eq(checks_for(True, "fresh"), {"ArvanCloud": True, "Sotoon": False},
+   "verify: with routing data, a Sotoon of 0 fails")
+eq(checks_for(True, "stale", sotoon=5), {"ArvanCloud": True, "Sotoon": True},
+   "verify: a stale RIS copy is still routing data, so Sotoon is checked")
+eq(checks_for(False, "dropped", arvan=0), {"ArvanCloud": False, "Sotoon": None},
+   "verify: ArvanCloud is checked without RIS, since it publishes a list")
+ok(all(passed is None or isinstance(passed, bool)
+       for _, passed in verify.provider_checks({})),
+   "verify: an empty stats dict gives checks, not a crash")
+eq([p for _, p in verify.provider_checks(stats)], [True, True],
+   "verify: the real stats above pass both provider checks")
 
 # ------------------------------------------------------ day-over-day guard
 
@@ -489,40 +575,83 @@ eq(build.PREVIOUS_STATS_URL,
    "previous release URL")
 real_get = fetch.http_get
 calls = []
+slept: list = []
 
 
-def fake_get(result):
+def fake_get(*results):
+    """An http_get answering each call with the next result (the last one
+    repeats); an exception is raised."""
+    answers = list(results)
+
     def get(url, headers, timeout=fetch.TIMEOUT):
         calls.append((url, headers, timeout))
+        result = answers.pop(0) if len(answers) > 1 else answers[0]
         if isinstance(result, BaseException):
             raise result
         return result
     return get
 
 
+def prev(url=build.PREVIOUS_STATS_URL):
+    """previous_stats with sleeps recorded: (result, calls made, log)."""
+    calls.clear()
+    slept.clear()
+    got, text = quiet(build.previous_stats, url, slept.append)
+    return got, len(calls), text
+
+
+OK_BODY = fetch.Response(200, {}, json.dumps({"version": "v1",
+                                               "audit": {}}).encode())
 try:
     fetch.http_get = fake_get(fetch.FetchError(0, "no route"))
-    eq(build.previous_stats("https://invalid.example/stats.json"), None,
-       "previous_stats: a failing URL gives None")
+    got, n, text = prev("https://invalid.example/stats.json")
+    eq(got, None, "previous_stats: a failing URL gives None")
     eq(calls[-1], ("https://invalid.example/stats.json",
                    {"User-Agent": fetch.USER_AGENT}, 60),
        "previous_stats: URL, User-Agent and 60 s timeout")
+    eq((n, slept), (2, [2]),
+       "previous_stats: a network error is retried once, like a source")
+    eq(text, "  previous release stats.json: no route\n",
+       "previous_stats: the reason for the skip is logged")
+    fetch.http_get = fake_get(fetch.FetchError(503, "Service Unavailable"))
+    got, n, text = prev()
+    eq((got, n, slept), (None, 4, [2, 4, 8]),
+       "previous_stats: a 5xx is retried with the sources' backoff")
+    ok("HTTP 503" in text, "previous_stats: the 5xx is logged")
+    # one blip must not switch the guard off (review M3)
+    fetch.http_get = fake_get(fetch.FetchError(0, "timed out"), OK_BODY)
+    got, n, text = prev()
+    eq((got, n), ({"version": "v1", "audit": {}}, 2),
+       "previous_stats: a timeout then a 200 still returns the stats")
+    eq(text, "", "previous_stats: a recovered blip logs nothing")
+    fetch.http_get = fake_get(fetch.FetchError(502, "Bad Gateway"), OK_BODY)
+    eq(prev()[:2], ({"version": "v1", "audit": {}}, 2),
+       "previous_stats: a 5xx then a 200 still returns the stats")
     fetch.http_get = fake_get(fetch.FetchError(404, "Not Found"))
-    eq(build.previous_stats(), None, "previous_stats: no release yet gives None")
+    got, n, text = prev()
+    eq((got, n, slept), (None, 1, []),
+       "previous_stats: no release yet (404) is not retried")
+    eq(text, "  previous release stats.json: no release yet (HTTP 404)\n",
+       "previous_stats: the 404 skip is logged")
     fetch.http_get = fake_get(RuntimeError("anything"))
-    eq(build.previous_stats(), None, "previous_stats: any exception gives None")
+    got, n, text = prev()
+    eq((got, n), (None, 1), "previous_stats: any exception gives None")
+    ok("RuntimeError" in text, "previous_stats: the exception type is logged")
     eq(calls[-1][0], build.PREVIOUS_STATS_URL, "previous_stats: default URL")
     fetch.http_get = fake_get(fetch.Response(503, {}, b"{}"))
-    eq(build.previous_stats(), None, "previous_stats: a non-200 response gives None")
+    got, _, text = prev()
+    eq(got, None, "previous_stats: a non-200 response gives None")
+    ok("HTTP 503" in text, "previous_stats: a non-200 status is logged")
     fetch.http_get = fake_get(fetch.Response(304, {}, b""))
-    eq(build.previous_stats(), None, "previous_stats: a 304 gives None")
+    eq(prev()[0], None, "previous_stats: a 304 gives None")
     fetch.http_get = fake_get(fetch.Response(200, {}, b"<html>not json"))
-    eq(build.previous_stats(), None, "previous_stats: a non-JSON body gives None")
+    got, _, text = prev()
+    eq(got, None, "previous_stats: a non-JSON body gives None")
+    ok("not JSON" in text, "previous_stats: a non-JSON body is logged")
     fetch.http_get = fake_get(fetch.Response(200, {}, b"[1, 2]"))
-    eq(build.previous_stats(), None, "previous_stats: JSON that is not an object")
-    fetch.http_get = fake_get(fetch.Response(
-        200, {}, json.dumps({"version": "v1", "audit": {}}).encode()))
-    eq(build.previous_stats(), {"version": "v1", "audit": {}},
+    eq(prev()[0], None, "previous_stats: JSON that is not an object")
+    fetch.http_get = fake_get(OK_BODY)
+    eq(prev()[:2], ({"version": "v1", "audit": {}}, 1),
        "previous_stats: a 200 with JSON returns the dict")
 finally:
     fetch.http_get = real_get
@@ -628,6 +757,10 @@ ok("added 4,096 addresses" in text and "removed 768 addresses" in text and
    "130 Iranian ASNs" in text,
    "an applied BGP adjustment quotes the added and removed addresses")
 ok("registry-only" not in text, "applied: not described as registry-only")
+ok("Registry, then routing" in text and "most specific route" in text,
+   "provenance: described as registry, then routing (review M7)")
+ok("Iranian only if a RIR delegated" not in text,
+   "provenance: the registry-only sentence is gone")
 text = notes(audit={"bgp": {**BGP, "applied": False}})
 ok("routing data was unavailable" in text and "registry-only" in text,
    "no BGP: routing data unavailable, so registry-only")

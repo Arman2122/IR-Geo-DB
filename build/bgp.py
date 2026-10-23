@@ -8,14 +8,18 @@ disagree, routing wins, decided by longest match:
 - Add: prefixes originated by an Iranian ASN, minus the foreign-only prefixes
   strictly inside them (Iranian prefixes inside those count again), minus the
   registry space they overlap. Only announced prefixes are added, never a
-  covering block.
+  covering block. An Iranian prefix under a less-specific foreign-only route
+  is not added at all: that is the shape of a hijack.
 - Remove: prefixes inside registry space whose origins are all foreign, minus
   the Iranian-origin prefixes strictly inside them. A foreign route that
   covers registry space (a less-specific aggregate) never removes anything.
 - A prefix with several origins (MOAS) counts as Iranian if any origin is.
+- The Iranian providers' own ASNs that are registered abroad are neutral: a
+  prefix only they originate is ignored, so it neither removes the
+  provider's Iranian space nor is added.
 
-Both rules are the same test: the most specific route covering an address
-decides whose it is.
+Both main rules are the same test: the most specific route covering an
+address decides whose it is.
 
 The IPv4 table is over a million routes, so everything here works on integer
 intervals. ip_network objects would cost hundreds of megabytes; they are only
@@ -27,7 +31,7 @@ from __future__ import annotations
 import ipaddress
 import socket
 from bisect import bisect_left, bisect_right
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import NamedTuple
 
 _BITS = {4: 32, 6: 128}
@@ -48,9 +52,9 @@ class Route(NamedTuple):
 class Adjustment:
     """The adjusted `ir` and what changed.
 
-    `networks`, `added` and `removed` hold both families (IPv4 first). The
-    address counts are IPv4 only, because the anomaly limits and the audit
-    compare IPv4 addresses.
+    `networks`, `added`, `removed` and `excluded` hold both families (IPv4
+    first). The unsuffixed address counts are IPv4 and the `_v6` ones IPv6:
+    each family is held to the anomaly limits against its own registry space.
     """
     networks: list
     added: list
@@ -58,6 +62,13 @@ class Adjustment:
     added_addresses: int
     removed_addresses: int
     registry_addresses: int
+    added_addresses_v6: int = 0
+    removed_addresses_v6: int = 0
+    registry_addresses_v6: int = 0
+    # space an Iranian-origin prefix would have added, left out because a
+    # foreign-only route covers that prefix; the address count is IPv4
+    excluded: list = field(default_factory=list)
+    excluded_addresses: int = 0
 
 
 class BGPAnomaly(Exception):
@@ -191,35 +202,63 @@ def _longest(prefixes, rivals) -> list[tuple[int, int]]:
     return _merge(pieces)
 
 
+def _supernets(version: int, start: int, end: int):
+    """Every prefix strictly containing the prefix start..end, as bounds."""
+    bits = _BITS[version]
+    for plen in range(bits + 1 - (end - start + 1).bit_length()):
+        host = (1 << (bits - plen)) - 1
+        yield start & ~host, (start & ~host) | host
+
+
 # -------------------------------------------------------------- adjustment
 
 
-def adjust(registry: list, routes: list[Route], ir_asns: set[int]) -> Adjustment:
+def adjust(registry: list, routes: list[Route], ir_asns: set[int],
+           neutral_asns: set[int] = frozenset()) -> Adjustment:
     """Apply longest-match routing to the registry's Iranian space.
 
     `registry` holds ip_network objects (or CIDR strings) of both families.
     "Inside registry space" is tested against the collapsed registry, so a
     route equal to a registry block, or to adjacent blocks that collapse into
     it, is inside; a route larger than that covers it and is never removed.
+
+    `neutral_asns` are the Iranian providers' own ASNs. Some are registered
+    abroad (Sotoon's AS41227 in the Netherlands, ArvanCloud's AGTL2 ASNs in
+    the UAE), so the registry does not count them as Iranian, yet a route
+    they originate inside the provider's Iranian registry space is its own
+    network, not space leased to a foreign host. A prefix whose origins are
+    all neutral is therefore ignored: it removes nothing, cuts nothing out of
+    an addition, and is not added (outside the registry it may be a foreign
+    edge, which `ir-cdn` carries instead). With a foreign origin beside it, a
+    prefix is foreign as before. An ASN in both sets is Iranian: most
+    providers' ASNs are registered in Iran, and the registry's word stands.
     """
     reg = _registry_runs(registry)
+    neutral = set(neutral_asns) - set(ir_asns)
 
     iranian: dict[int, set] = {4: set(), 6: set()}   # any IR origin
     for version, start, end, _, origin in routes:
         if origin in ir_asns:
             iranian[version].add((start, end))
     ir_runs = {v: _merge(iranian[v]) for v in (4, 6)}
+    # every prefix that would cover an Iranian one, so that finding the
+    # foreign ones below is one set lookup per route
+    supernets = {v: {c for p in iranian[v] for c in _supernets(v, *p)}
+                 for v in (4, 6)}
 
-    # Foreign routes matter only inside registry space (removal) or inside
-    # Iranian-announced space (where they cut into an addition). The rest of
-    # the table is bisected and dropped.
+    # Foreign routes matter only inside registry space (removal), inside
+    # Iranian-announced space (where they cut into an addition), or over an
+    # Iranian prefix (which they keep out of the addition). The rest of the
+    # table is bisected and dropped. A row is one origin, so skipping neutral
+    # rows leaves a neutral-only prefix out, and neutral + foreign foreign.
     bounds = {v: ([s for s, _ in reg[v]], [e for _, e in reg[v]],
                   [s for s, _ in ir_runs[v]], [e for _, e in ir_runs[v]])
               for v in (4, 6)}
     in_registry: dict[int, set] = {4: set(), 6: set()}
     in_iranian: dict[int, set] = {4: set(), 6: set()}
+    over_iranian: dict[int, set] = {4: set(), 6: set()}
     for version, start, end, _, origin in routes:
-        if origin in ir_asns:
+        if origin in ir_asns or origin in neutral:
             continue
         reg_s, reg_e, ir_s, ir_e = bounds[version]
         i = bisect_right(reg_s, start) - 1
@@ -228,8 +267,10 @@ def adjust(registry: list, routes: list[Route], ir_asns: set[int]) -> Adjustment
         i = bisect_right(ir_s, start) - 1
         if i >= 0 and end <= ir_e[i]:
             in_iranian[version].add((start, end))
+        if (start, end) in supernets[version]:
+            over_iranian[version].add((start, end))
 
-    networks, added, removed = [], [], []
+    networks, added, removed, excluded = [], [], [], []
     counts = {}
     for v in (4, 6):
         # MOAS: a prefix with any Iranian origin is Iranian, never foreign.
@@ -238,39 +279,63 @@ def adjust(registry: list, routes: list[Route], ir_asns: set[int]) -> Adjustment
         # predates this rule: it added foreign-only more-specifics inside
         # Iranian prefixes (188.159.224.0/19 under 188.158.0.0/15, mostly).
         # The same data gives +182,272 with it.
-        added_runs = _subtract(_longest(iranian[v], in_iranian[v] - iranian[v]),
-                               reg[v])
+        rivals = in_iranian[v] - iranian[v]
+        # An Iranian prefix under a foreign-only less-specific route is a
+        # more-specific of someone else's block: the shape of a hijack, which
+        # Iranian networks have done before, and adding it would send that
+        # block's traffic "direct". It is left out. A covering prefix with
+        # any Iranian origin is Iranian, so it does not count.
+        foreign_over = over_iranian[v] - iranian[v]
+        hijack = {p for p in iranian[v]
+                  if not foreign_over.isdisjoint(_supernets(v, *p))}
+        added_runs = _subtract(_longest(iranian[v] - hijack, rivals), reg[v])
+        # what the addition would have been without that rule, so the audit
+        # shows exactly the space it kept out
+        excluded_runs = _subtract(
+            _subtract(_longest(iranian[v], rivals), reg[v]), added_runs)
         result = _merge(_subtract(reg[v], removed_runs) + added_runs)
 
         networks += _networks(v, result)
         added += _networks(v, added_runs)
         removed += _networks(v, removed_runs)
-        counts[v] = (_size(added_runs), _size(removed_runs), _size(reg[v]))
+        excluded += _networks(v, excluded_runs)
+        counts[v] = (_size(added_runs), _size(removed_runs), _size(reg[v]),
+                     _size(excluded_runs))
 
     return Adjustment(networks=networks, added=added, removed=removed,
                       added_addresses=counts[4][0],
                       removed_addresses=counts[4][1],
-                      registry_addresses=counts[4][2])
+                      registry_addresses=counts[4][2],
+                      added_addresses_v6=counts[6][0],
+                      removed_addresses_v6=counts[6][1],
+                      registry_addresses_v6=counts[6][2],
+                      excluded=excluded, excluded_addresses=counts[4][3])
 
 
 def check_limits(adj: Adjustment, max_add: float = 0.20,
                  max_remove: float = 0.10) -> None:
-    """Raise BGPAnomaly if the adjustment moves too much IPv4 space.
+    """Raise BGPAnomaly if the adjustment moves too much of either family.
 
-    On 2026-10-23 the adjustment was +1.7 % / -0.8 %. A jump past the limits
-    means a leak, a broken dump or a lost ASN list, not a change in Iran.
+    On 2026-10-23 the adjustment was +1.7 % / -0.7 % of IPv4 and
+    +0.2 % / -3.1 % of IPv6. A jump past the limits means a leak, a broken
+    dump or a lost ASN list, not a change in Iran. Each family is measured
+    against its own registry space; one with none is skipped.
     """
-    base = adj.registry_addresses
-    if base <= 0:
-        return
     problems = []
-    for verb, count, limit in (("add", adj.added_addresses, max_add),
-                               ("remove", adj.removed_addresses, max_remove)):
-        if count > limit * base:
-            problems.append(
-                f"BGP adjustment would {verb} {count / base:.1%} of registry "
-                f"IPv4 addresses (limit {limit * 100:g}%; {count:,} of "
-                f"{base:,})")
+    for family, base, adds, removes in (
+            ("IPv4", adj.registry_addresses, adj.added_addresses,
+             adj.removed_addresses),
+            ("IPv6", adj.registry_addresses_v6, adj.added_addresses_v6,
+             adj.removed_addresses_v6)):
+        if base <= 0:
+            continue
+        for verb, count, limit in (("add", adds, max_add),
+                                   ("remove", removes, max_remove)):
+            if count > limit * base:
+                problems.append(
+                    f"BGP adjustment would {verb} {count / base:.1%} of "
+                    f"registry {family} addresses (limit {limit * 100:g}%; "
+                    f"{count:,} of {base:,})")
     if problems:
         raise BGPAnomaly("; ".join(problems))
 
