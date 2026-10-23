@@ -333,9 +333,9 @@ as `8.8.8.8` turns up inside it.
 | [PersianBlocker](https://github.com/MasterKia/PersianBlocker) | MasterKia | AGPL-3.0 | Persian ads |
 | [HaGeZi DNS Blocklists](https://github.com/hagezi/dns-blocklists) | HaGeZi | GPL-3.0 | ads / tracking |
 | [AdGuard DNS filter](https://github.com/AdguardTeam/AdGuardSDNSFilter) | AdGuard | GPL-3.0 | ads / tracking |
-| [URLhaus](https://urlhaus.abuse.ch) via [malware-filter](https://gitlab.com/malware-filter/urlhaus-filter) | abuse.ch, curbengh | CC0 / MIT | malware |
+| [HaGeZi Threat Intelligence Feeds](https://github.com/hagezi/dns-blocklists#tif) (mini) | HaGeZi | GPL-3.0 | malware |
 | [Feodo Tracker](https://feodotracker.abuse.ch/blocklist/) | abuse.ch | CC0 | botnet C2 IPs |
-| [Phishing.Database](https://github.com/mitchellkrogza/Phishing.Database) | mitchellkrogza | MIT | phishing |
+| [CERT Polska warning list](https://cert.pl/en/warning-list/) | CERT Polska | free for any use | phishing |
 | [NoCoin](https://github.com/hoshsadiq/adblock-nocoin-list) | hoshsadiq | MIT | cryptominers |
 | [StevenBlack hosts](https://github.com/StevenBlack/hosts) | StevenBlack | MIT | adult / gambling |
 | Cloudflare, AWS, Google, Fastly, G-Core | respective owners | — | exclusion lists |
@@ -343,11 +343,17 @@ as `8.8.8.8` turns up inside it.
 Found a missing Iranian domain or a false positive? Report it to the upstream
 source — fixing it there fixes it for everyone. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-**Set sizes vary a lot, and small does not mean broken.** `malware` and
-`cryptominers` are a few hundred entries each because their sources track
-*currently active* threats rather than accumulating history; Feodo Tracker's
-IP feed in particular is often only a handful of addresses. `ads`, `phishing`
-and `nsfw` are the large ones. Live counts are always in `stats.json`.
+**Set sizes vary a lot, and small does not mean broken.** `cryptominers` is a
+few hundred entries because its source tracks *currently active* miners rather
+than accumulating history, and Feodo Tracker's IP feed (`geoip:malware`) is
+often only a handful of addresses. `geoip:phishing` is deliberately empty
+until a vetted phishing IP feed is added: the previous one carried Google and
+Cloudflare addresses. `ads`, `malware`, `phishing` and `nsfw` are the large
+ones. Live counts are always in `stats.json`.
+
+No blocklist may cover a shared platform such as `sites.google.com`, `bit.ly`
+or `github.io`, since a suffix rule there would take down every site hosted
+under it; `verify.py` refuses to publish a build that does.
 
 ## Design notes
 

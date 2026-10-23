@@ -134,9 +134,8 @@ def build_ip_sets(h: sources.Harvest, strict_exclude: bool) -> tuple[dict, dict]
     malware_ip = make_ipset("malware", IP_ROLES["malware"][0],
                             h.get("threat-ip-malware"),
                             ["Feodo Tracker / abuse.ch (CC0)"])
-    phishing_ip = make_ipset("phishing", IP_ROLES["phishing"][0],
-                             h.get("threat-ip-phishing"),
-                             ["Phishing.Database (MIT)"])
+    # no vetted phishing IP feed yet; kept so geoip:phishing still resolves
+    phishing_ip = make_ipset("phishing", IP_ROLES["phishing"][0], [], [])
 
     for label, key in (("ipverse", "xc-ipverse-"), ("ipdeny", "xc-ipdeny-")):
         other_raw = h.any_of(key)
@@ -181,12 +180,13 @@ def build_domain_sets(h: sources.Harvest) -> dict[str, DomainSet]:
                  "AdGuard DNS filter (GPL-3.0)"])
 
     out["malware"] = make_domainset(
-        "malware", DOMAIN_ROLES["malware"][0], suffix=h.get("malware-urlhaus"),
-        sources=["URLhaus / abuse.ch via malware-filter (CC0)"])
+        "malware", DOMAIN_ROLES["malware"][0],
+        suffix=h.get("malware-hagezi-tif"),
+        sources=["HaGeZi Threat Intelligence Feeds mini (GPL-3.0)"])
 
     out["phishing"] = make_domainset(
-        "phishing", DOMAIN_ROLES["phishing"][0], suffix=h.get("phishing-db"),
-        sources=["Phishing.Database (MIT)"])
+        "phishing", DOMAIN_ROLES["phishing"][0], suffix=h.get("phishing-certpl"),
+        sources=["CERT Polska warning list"])
 
     out["cryptominers"] = make_domainset(
         "cryptominers", DOMAIN_ROLES["cryptominers"][0],

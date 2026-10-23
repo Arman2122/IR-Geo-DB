@@ -47,6 +47,21 @@ MUST_NOT_BE_IR = [
     ("192.168.1.1", "RFC1918"),
 ]
 
+# Shared platforms that no blocklist may cover. Every set is emitted as suffix
+# rules, so one of these in a feed takes down every site hosted under it —
+# the 2026-10 Phishing.Database failure listed sites.google.com, bit.ly and
+# nflxvideo.net. Checked against each name and all of its parents.
+MUST_NOT_BLOCK = """
+    google.com sites.google.com docs.google.com googleapis.com gstatic.com
+    youtube.com bit.ly github.com github.io githubusercontent.com gravatar.com
+    netflix.com nflxvideo.net cloudflare.com pages.dev workers.dev
+    cloudfront.net amazonaws.com azurewebsites.net blogspot.com wordpress.com
+    web.app firebaseapp.com vercel.app netlify.app herokuapp.com t.me
+    telegram.org whatsapp.net instagram.com apple.com icloud.com microsoft.com
+    windowsupdate.com wikipedia.org digikala.com aparat.com shaparak.ir
+    snapp.ir divar.ir
+""".split()
+
 failures: list[str] = []
 checks = 0
 
@@ -173,6 +188,19 @@ def main() -> int:
         check(not both,
               f"clash/{fn}: nothing listed as both '+.x' and 'x' "
               f"({len(both)} found)")
+
+    # ----------------------------------------------------- blocklist safety
+    print("\nBlocklist safety")
+    for fn in sorted(os.listdir(text_dir)):
+        if not fn.endswith("-domains.txt") or fn == "ir-domains.txt":
+            continue
+        doms = {l.strip() for l in open(os.path.join(text_dir, fn),
+                                        encoding="utf-8")
+                if l.strip() and not l.startswith("#")}
+        hits = sorted(s for s in MUST_NOT_BLOCK
+                      if any(".".join(s.split(".")[i:]) in doms
+                             for i in range(len(s.split(".")))))
+        check(not hits, f"text/{fn}: blocks no shared platform ({hits})")
 
     # ------------------------------------------------------------ Xray .dat
     print("\nXray data files")

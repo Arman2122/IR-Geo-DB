@@ -150,31 +150,33 @@ SOURCES: list[Source] = [
            url="https://raw.githubusercontent.com/AdguardTeam/AdGuardSDNSFilter/gh-pages/Filters/filter.txt"),
 
     # ---- threat IPs, for firewall drop rules rather than DNS
-    Source(key="threat-ip-phishing", name="Phishing.Database (IPs)",
-           parser="cidr", kind="ip", tier="blocklist", license="MIT",
-           optional=True,
-           homepage="https://github.com/mitchellkrogza/Phishing.Database",
-           url="https://raw.githubusercontent.com/mitchellkrogza/Phishing.Database/master/phishing-IPs-ACTIVE.txt"),
+    # The phishing IP feed was Phishing.Database, which stopped updating on
+    # 2026-10-02 and carried Google, Cloudflare and CloudFront addresses. The
+    # `phishing` IP set stays, empty, so geoip:phishing still resolves.
     Source(key="threat-ip-malware", name="Feodo Tracker botnet C2",
            parser="cidr", kind="ip", tier="blocklist", license="CC0",
            optional=True, homepage="https://feodotracker.abuse.ch/blocklist/",
            url="https://feodotracker.abuse.ch/downloads/ipblocklist.txt"),
 
     # ---- security
-    # abuse.ch retired the unauthenticated URLhaus downloads (hostfile, rpz,
-    # text_online all answer 410 Gone). malware-filter rebuilds the host list
-    # from the authenticated URLhaus API twice a day and drops popular domains
-    # that only host the occasional malicious file, which a raw URL feed
-    # would otherwise turn into whole-domain blocks.
-    Source(key="malware-urlhaus", name="URLhaus via malware-filter",
-           parser="hosts", kind="domain", tier="blocklist",
-           license="CC0 / MIT", optional=True,
-           homepage="https://gitlab.com/malware-filter/urlhaus-filter",
-           url="https://malware-filter.gitlab.io/malware-filter/urlhaus-filter-hosts.txt"),
-    Source(key="phishing-db", name="Phishing.Database", parser="domains",
-           kind="domain", tier="blocklist", license="MIT", optional=True,
-           homepage="https://github.com/mitchellkrogza/Phishing.Database",
-           url="https://raw.githubusercontent.com/mitchellkrogza/Phishing.Database/master/phishing-domains-ACTIVE.txt"),
+    # URLhaus data is off limits: abuse.ch's terms (effective 2025-11-04)
+    # restrict it to authenticated not-for-profit use and forbid derivative
+    # works, and that carries into every mirror of it. HaGeZi's TIF mini is a
+    # size-optimised aggregate of threat feeds under the project's own
+    # licence, built to stay off popular domains.
+    Source(key="malware-hagezi-tif", name="HaGeZi Threat Intelligence Feeds mini",
+           parser="domains", kind="domain", tier="blocklist",
+           license="GPL-3.0", optional=True,
+           homepage="https://github.com/hagezi/dns-blocklists",
+           url="https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/tif.mini-onlydomains.txt"),
+    # Replaces Phishing.Database, which stopped updating on 2026-10-02 and
+    # listed whole platforms (sites.google.com, bit.ly, nflxvideo.net). CERT
+    # Polska's terms allow use "for any purpose, including commercial".
+    Source(key="phishing-certpl", name="CERT Polska warning list",
+           parser="domains", kind="domain", tier="blocklist",
+           license="free for any use", optional=True,
+           homepage="https://cert.pl/en/warning-list/",
+           url="https://hole.cert.pl/domains/v2/domains.txt"),
     Source(key="crypto-nocoin", name="NoCoin adblock list", parser="hosts",
            kind="domain", tier="blocklist", license="MIT", optional=True,
            homepage="https://github.com/hoshsadiq/adblock-nocoin-list",
