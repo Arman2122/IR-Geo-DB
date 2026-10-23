@@ -415,8 +415,8 @@ licence is the upstream's own. Grouped by where each source comes from:
 | [StevenBlack hosts](https://github.com/StevenBlack/hosts) (porn and gambling) | StevenBlack | MIT | `nsfw` |
 | [v2fly domain-list-community](https://github.com/v2fly/domain-list-community) (`CATEGORY-IR`) | v2fly | MIT | `ir` domains |
 
-PersianBlocker here is the fork that carries the list forward: the original
-maintainer has died, and uBlock Origin switched to the fork.
+PersianBlocker here is the maintained fork (`PersianBlocker/PersianBlocker`),
+which replaced the original repository.
 
 **Aggregator** — republishes someone else's data; used only because the
 authority can't be reached.
