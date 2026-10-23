@@ -12,6 +12,7 @@ blocklist parsers that decide whether a line means "block this whole domain".
 
 from __future__ import annotations
 
+import gzip
 import ipaddress
 import os
 import sys
@@ -63,7 +64,7 @@ ripencc|IR|ipv4|9.9.9.0|256|20200101|reserved|pqr
 ripencc|IR|ipv4|8.8.8.0|256|20200101|available|stu
 """
 
-got = sources.parse_rir(RIR_SAMPLE)
+got = sources.parse_rir(RIR_SAMPLE).values
 # 1536 addresses is 1024 + 512, so it summarises to a /22 followed by a /23 —
 # not two equal blocks. This is exactly the case a prefix-length assumption
 # would get wrong.
@@ -74,8 +75,23 @@ eq(sorted(got),
 ok("1.2.3.0/24" not in got, "RIR: other countries are excluded")
 ok(not any(n.startswith("9.9.9") for n in got), "RIR: 'reserved' is not delegated")
 ok(not any(n.startswith("8.8.8") for n in got), "RIR: 'available' is not delegated")
-eq(sources.parse_rir(RIR_SAMPLE, country="DE"), ["1.2.3.0/24"],
+eq(sources.parse_rir(RIR_SAMPLE, country="DE").values, ["1.2.3.0/24"],
    "RIR: country filter is honoured")
+
+# An asn record's value is a count of consecutive ASNs from `start`, not an
+# end number, and only delegated statuses count — same rule as address space.
+rir = sources.parse_rir(RIR_SAMPLE + b"ripencc|IR|asn|12880|1|20000101|allocated|x\n"
+                                     b"ripencc|IR|asn|60000|3|20000101|assigned|y\n"
+                                     b"ripencc|IR|asn|70000|2|20000101|reserved|z\n"
+                                     b"ripencc|DE|asn|3320|1|20000101|allocated|w\n")
+eq(sorted(v for v in rir.values if v.startswith("AS")),
+   ["AS12880", "AS60000", "AS60001", "AS60002"],
+   "rir: ASN runs, delegated IR records only")
+eq(rir.invalid, 0, "rir: skipped countries and statuses are not invalid")
+eq(sources.parse_rir(RIR_SAMPLE + b"ripencc|IR|asn|2|4294967295|20000101|allocated|x\n"
+                                  b"ripencc|IR|ipv4|not-an-ip|256|20200101|allocated|y\n"
+                     ).invalid,
+   2, "rir: an ASN run past 2^32-1 and a bad address are counted, not emitted")
 
 eq([str(n) for n in range_to_cidrs("10.0.0.0", 1536)],
    ["10.0.0.0/22", "10.0.4.0/23"], "range_to_cidrs splits unaligned counts")
@@ -162,7 +178,7 @@ ADBLOCK = b"""\
 ||example.org/path^
 [Adblock Plus 2.0]
 """
-eq(sources.parse_adblock(ADBLOCK), ["ads.example.com", "bad.example.com"],
+eq(sources.parse_adblock(ADBLOCK).values, ["ads.example.com", "bad.example.com"],
    "adblock: only unqualified whole-domain rules are taken")
 
 HOSTS = b"""\
@@ -172,7 +188,7 @@ HOSTS = b"""\
 0.0.0.0 trailing.example.org # inline comment
 1.2.3.4 not-a-sinkhole.example.com
 """
-eq(sources.parse_hosts(HOSTS),
+eq(sources.parse_hosts(HOSTS).values,
    ["ads.example.com", "tracker.example.net", "trailing.example.org"],
    "hosts: only sinkhole addresses count as blocks")
 
@@ -183,20 +199,121 @@ example.com
 0.0.0.0 mixed.example.net
 another.example.org
 """
-eq(sources.parse_domains(DOMAINS),
+eq(sources.parse_domains(DOMAINS).values,
    ["example.com", "mixed.example.net", "another.example.org"],
    "domains: tolerates a hosts-style line inside a domain list")
 
-eq(sources.parse_cidr(b"1.2.3.0/24 # note\n\n; semi\n2001:db8::/32\n"),
+eq(sources.parse_cidr(b"1.2.3.0/24 # note\n\n; semi\n2001:db8::/32\n").values,
    ["1.2.3.0/24", "2001:db8::/32"], "cidr: comments and blanks are stripped")
+eq(sources.parse_cidr(b"\xef\xbb\xbf5.145.115.0/24\r\n147.160.138.19 \r\nnot-ip\n2001:db8::1\n").values,
+   ["5.145.115.0/24", "147.160.138.19/32", "2001:db8::1/128"], "cidr: BOM, CRLF, bare IPs")
+eq(sources.parse_cidr(b"1.2.3.0/24\ngarbage\n").invalid, 1, "cidr: invalid lines counted")
+eq(sources.parse_cidr(b"# note\n\n; semi\n").invalid, 0,
+   "cidr: comments and blanks are not invalid")
 
 eq(sources.parse_fastly_json(b'{"addresses":["1.2.3.0/24"],'
-                             b'"ipv6_addresses":["2001:db8::/32"]}'),
+                             b'"ipv6_addresses":["2001:db8::/32"]}').values,
    ["1.2.3.0/24", "2001:db8::/32"], "fastly json: both families")
 
 eq(sources.parse_google_json(
-    b'{"prefixes":[{"ipv4Prefix":"1.2.3.0/24"},{"ipv6Prefix":"2001:db8::/32"}]}'),
+    b'{"prefixes":[{"ipv4Prefix":"1.2.3.0/24"},{"ipv6Prefix":"2001:db8::/32"}]}').values,
    ["1.2.3.0/24", "2001:db8::/32"], "google json: both families")
+eq(sources.parse_google_json(b'{"prefixes":[{"ipv4Prefix":"1.2.3.0/24"},'
+                             b'{"ipv4Prefix":"junk"}]}').invalid,
+   1, "google json: a malformed prefix is counted, not passed through")
+eq(sources.parse_aws_json(b'{"prefixes":[{"ip_prefix":"1.2.3.0/24"}],'
+                          b'"ipv6_prefixes":[{"ipv6_prefix":"2001:db8::/32"}]}').values,
+   ["1.2.3.0/24", "2001:db8::/32"], "aws json: both families")
+eq(sources.parse_gcore_json(b'{"addresses":["1.2.3.0/24"],'
+                            b'"addresses_v6":["2001:db8::/32"]}').values,
+   ["1.2.3.0/24", "2001:db8::/32"], "gcore json: both families")
+
+# Every domain parser runs clean_domain. A line that has the shape of an entry
+# but is rejected is counted, so a feed that turns to garbage shows up in
+# `invalid`; a line skipped on purpose (an option rule, a non-sinkhole address)
+# is not.
+for parser, text, names, rejected, why in (
+        (sources.parse_domains,
+         b"Example.COM.\n*.wild.example.com\nbad_.-x.com\nads-*.example.net\n",
+         ["example.com", "wild.example.com"], 2, "domains"),
+        (sources.parse_hosts,
+         b"0.0.0.0 EXAMPLE.com\n0.0.0.0 ads-*.example.net\n"
+         b"1.2.3.4 not-a-sinkhole.example.com\n",
+         ["example.com"], 1, "hosts"),
+        (sources.parse_adblock,
+         b"||EXAMPLE.com^\n||-bad.example.net^\n||x.example.org^$third-party\n",
+         ["example.com"], 1, "adblock"),
+        (sources.parse_adguard_allow,
+         b"||A.Example.com^\n||-bad.example.net^\n@@||x.com^$important\n",
+         ["a.example.com"], 1, "adguard allow")):
+    res = parser(text)
+    eq(res.values, names, f"{why}: names are cleaned")
+    eq(res.invalid, rejected, f"{why}: rejected names are counted, skipped rules are not")
+
+
+# ----------------------------------------------- feeds for the BGP and filters
+
+# RIS whois dump rows are origin<TAB>prefix<TAB>peers. Only well-seen routes of
+# a sane size are kept: too few peers, or a prefix shorter than /8, is dropped.
+RIS = (b"% comment\n\n42337\t5.160.0.0/16\t300\n174\t0.0.0.0/0\t4\n"
+       b"{1,2}\t9.9.9.0/24\t300\n1299\t8.0.0.0/7\t50\n64512\t1.2.3.0/24\t9\n")
+eq(sources.parse_ris(RIS).values, ["42337 5.160.0.0/16"],
+   "ris: peers >= 10, v4 length >= /8, AS-sets skipped")
+eq(sources.parse_ris(gzip.compress(RIS)).values, ["42337 5.160.0.0/16"], "ris: .gz input")
+eq(sources.parse_ris(RIS).invalid, 0,
+   "ris: filtered and AS-set rows are skipped by design, not invalid")
+eq(sources.parse_ris(b"3333\t2001:db8::/32\t160\n3333\t2000::/15\t160\n"
+                     b"3333\t2001:db8::/48\t9\n").values,
+   ["3333 2001:db8::/32"], "ris: v6 length >= /16, peers >= 10")
+eq(sources.parse_ris(b"3333\t193.0.0.0/21\t160\nshort row\nx\t1.2.3.0/24\t99\n"
+                     b"5\t1.2.3.0/99\t99\n5\t1.2.3.0/24\tmany\n").invalid,
+   4, "ris: short rows, bad origins, prefixes and peer counts are counted")
+try:
+    sources.parse_ris(gzip.compress(RIS)[:-12])
+    truncated = False
+except EOFError:
+    truncated = True
+ok(truncated, "ris: a truncated download raises instead of parsing as a shorter list")
+
+ORG_JSON = (b'{"objects":{"object":[{"attributes":{"attribute":'
+            b'[{"name":"aut-num","value":"AS202319"},{"name":"as-name","value":"Sotoon-CDN"}]}}]}}')
+eq(sources.parse_ripe_org_asns(ORG_JSON).values, ["AS202319"], "ripe org: aut-nums")
+eq(sources.parse_ripe_org_asns(ORG_JSON.replace(b"AS202319", b"ASxyz")).invalid, 1,
+   "ripe org: a malformed aut-num is counted")
+
+DLC = geodat.encode_geosite({"category-ir": [(geodat.ROOT_DOMAIN, "aparat.com"),
+                                             (geodat.FULL, "x.digikala.com"),
+                                             (geodat.PLAIN, "kw")],
+                             "google": [(geodat.ROOT_DOMAIN, "google.com")]})
+eq(sources.parse_v2fly_dlc(DLC).values, ["aparat.com", "full:x.digikala.com"],
+   "dlc: CATEGORY-IR domain + full only")
+eq(sources.parse_v2fly_dlc(geodat.encode_geosite(
+    {"category-ir": [(geodat.ROOT_DOMAIN, "ads-*.x.ir"), (geodat.REGEX, r"^x$")]})).invalid,
+   1, "dlc: a rejected name is counted, a regexp entry is not")
+
+PSL = (b"// ===BEGIN ICANN DOMAINS===\nir\nco.ir\n// ===END ICANN DOMAINS===\n"
+       b"// ===BEGIN PRIVATE DOMAINS===\ndyndns.org\n*.compute.example\n"
+       b"!www.compute.example\n// ===END PRIVATE DOMAINS===\n")
+eq(sources.parse_psl(PSL).values,
+   ["ir", "co.ir", "private:dyndns.org", "private:*.compute.example",
+    "private:!www.compute.example"], "psl")
+# Rules are not hostnames, so they must not go through clean_domain: that would
+# strip the wildcard, reject '!' and reject IDN rules.
+IDN = b"\xd8\xa7\xdb\x8c\xd8\xb1\xd8\xa7\xd9\x86"       # the Persian word for Iran
+eq(sources.parse_psl(b"// c\n\nCO.IR  trailing comment\n" + IDN + b"\n").values,
+   ["co.ir", IDN.decode()], "psl: first token, lower-cased, IDN kept")
+eq(sources.parse_psl(b"ok\na..b\nx.*.y\n").invalid, 2,
+   "psl: empty labels and misplaced wildcards are counted")
+
+eq(sorted(sources.parse_adguard_allow(
+    b"! c\n||a.example.com^\n@@||b.example.org^|\n@@||x.com^$important\n/re/\n").values),
+   ["a.example.com", "b.example.org"], "adguard allow: plain rules only")
+
+ok("html_cidr" not in sources.PARSERS, "the unused html_cidr parser is gone")
+for name in ("ris", "ripe_org_asns", "v2fly_dlc", "psl", "adguard_allow"):
+    ok(name in sources.PARSERS, f"parser '{name}' is registered")
+ok(all(s.parser in sources.PARSERS for s in sources.SOURCES),
+   "every registered source names a parser that exists")
 
 
 # ------------------------------------------------- sing-box rule ingestion

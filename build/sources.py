@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import gzip
 import io
+import ipaddress
 import json
 import os
 import re
@@ -24,6 +25,10 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
+from typing import NamedTuple
+
+import geodat
+from model import clean_domain
 
 USER_AGENT = "IR-Geo-DB/1.0 (+https://github.com/Arman2122/IR-Geo-DB)"
 TIMEOUT = 120
@@ -227,40 +232,83 @@ def fetch(url: str, cache_dir: str | None = None, retries: int = 4) -> bytes:
 
 # ------------------------------------------------------------------- parsers
 
-_CIDR_RE = re.compile(
-    r"\b(?:(?:\d{1,3}\.){3}\d{1,3}/\d{1,2}|[0-9A-Fa-f:]{2,}:[0-9A-Fa-f:]*/\d{1,3})\b")
+
+class Parsed(NamedTuple):
+    """What every parser returns.
+
+    `invalid` counts lines that have the shape of an entry but fail
+    validation. Lines skipped on purpose (comments, other countries, rules
+    with options this parser does not support) are not invalid, so a feed that
+    turns to garbage stands out in the count instead of hiding in it.
+    """
+    values: list[str]
+    invalid: int
+
+
 _HOSTS_RE = re.compile(r"^\s*(?:0\.0\.0\.0|127\.0\.0\.1|::1?)\s+(\S+)")
 _ADBLOCK_RE = re.compile(r"^\|\|([A-Za-z0-9._-]+)\^")
+_ADGUARD_ALLOW_RE = re.compile(r"^(?:@@)?\|\|([A-Za-z0-9._-]+)\^\|?$")
+_AS_RE = re.compile(r"AS([0-9]+)")
+
+_MAX_ASN = 2 ** 32 - 1
+
+# A route seen by only a few collectors is more likely a leak or a bad
+# announcement than a real route, and so is a prefix shorter than these.
+_RIS_MIN_PEERS = 10
+_RIS_MIN_LENGTH = {4: 8, 6: 16}
 
 
 def _text(raw: bytes) -> str:
-    return raw.decode("utf-8", errors="replace")
+    # utf-8-sig: a BOM would otherwise stay glued to the first entry
+    return raw.decode("utf-8-sig", errors="replace")
 
 
-def parse_cidr(raw: bytes) -> list[str]:
-    out = []
+def _networks(items) -> Parsed:
+    """Validate CIDR strings. Bare addresses become /32 or /128."""
+    out, bad = [], 0
+    for item in items:
+        # ip_network() would read a JSON number as an integer address
+        if not isinstance(item, str):
+            bad += 1
+            continue
+        try:
+            out.append(str(ipaddress.ip_network(item, strict=False)))
+        except ValueError:
+            bad += 1
+    return Parsed(out, bad)
+
+
+def _domains(names) -> Parsed:
+    """Run clean_domain over candidate names and count the rejects."""
+    out, bad = [], 0
+    for name in names:
+        cleaned = clean_domain(name)
+        if cleaned is None:
+            bad += 1
+        else:
+            out.append(cleaned)
+    return Parsed(out, bad)
+
+
+def parse_cidr(raw: bytes) -> Parsed:
+    lines = []
     for line in _text(raw).splitlines():
         line = line.split("#", 1)[0].split(";", 1)[0].strip()
         if line:
-            out.append(line)
-    return out
+            lines.append(line)
+    return _networks(lines)
 
 
-def parse_html_cidr(raw: bytes) -> list[str]:
-    """Pull every CIDR out of an HTML page. Deliberately loose."""
-    return _CIDR_RE.findall(_text(raw))
-
-
-def parse_rir(raw: bytes, country: str = "IR") -> list[str]:
+def parse_rir(raw: bytes, country: str = "IR") -> Parsed:
     """Extract one country's delegations from a RIR delegated-stats file.
 
     Lines are registry|cc|type|start|value|date|status[|opaque-id]. For IPv4
     `value` is a host count, not a prefix length; for IPv6 it is the prefix
-    length. Only allocated and assigned records are delegated to anyone.
+    length; for an asn record it is how many consecutive ASNs start at `start`.
+    Only allocated and assigned records are delegated to anyone. Prefixes come
+    out as CIDRs and ASNs as "AS<n>".
     """
-    import ipaddress
-
-    out = []
+    out, bad = [], 0
     for line in _text(raw).splitlines():
         if not line or line.startswith("#"):
             continue
@@ -277,19 +325,26 @@ def parse_rir(raw: bytes, country: str = "IR") -> list[str]:
                 out.extend(str(n) for n in
                            ipaddress.summarize_address_range(first, last))
             elif kind == "ipv6":
-                out.append(f"{start}/{int(value)}")
-        except (ValueError, ipaddress.AddressValueError):
-            continue
-    return out
+                out.append(str(ipaddress.ip_network(f"{start}/{int(value)}",
+                                                    strict=False)))
+            elif kind == "asn":
+                first, count = int(start), int(value)
+                # bounded so one corrupt count cannot expand into billions
+                if first < 0 or count < 1 or first + count - 1 > _MAX_ASN:
+                    raise ValueError(line)
+                out.extend(f"AS{n}" for n in range(first, first + count))
+        except ValueError:
+            bad += 1
+    return Parsed(out, bad)
 
 
-def parse_aws_json(raw: bytes) -> list[str]:
+def parse_aws_json(raw: bytes) -> Parsed:
     data = json.loads(_text(raw))
-    return ([p["ip_prefix"] for p in data.get("prefixes", [])] +
-            [p["ipv6_prefix"] for p in data.get("ipv6_prefixes", [])])
+    return _networks([p["ip_prefix"] for p in data.get("prefixes", [])] +
+                     [p["ipv6_prefix"] for p in data.get("ipv6_prefixes", [])])
 
 
-def parse_google_json(raw: bytes) -> list[str]:
+def parse_google_json(raw: bytes) -> Parsed:
     data = json.loads(_text(raw))
     out = []
     for p in data.get("prefixes", []):
@@ -297,48 +352,157 @@ def parse_google_json(raw: bytes) -> list[str]:
             out.append(p["ipv4Prefix"])
         if "ipv6Prefix" in p:
             out.append(p["ipv6Prefix"])
-    return out
+    return _networks(out)
 
 
-def parse_fastly_json(raw: bytes) -> list[str]:
+def parse_fastly_json(raw: bytes) -> Parsed:
     data = json.loads(_text(raw))
-    return data.get("addresses", []) + data.get("ipv6_addresses", [])
+    return _networks(data.get("addresses", []) + data.get("ipv6_addresses", []))
 
 
-def parse_gcore_json(raw: bytes) -> list[str]:
+def parse_gcore_json(raw: bytes) -> Parsed:
     data = json.loads(_text(raw))
-    return data.get("addresses", []) + data.get("addresses_v6", [])
+    return _networks(data.get("addresses", []) + data.get("addresses_v6", []))
 
 
-def parse_hosts(raw: bytes) -> list[str]:
-    out = []
+def parse_ris(raw: bytes) -> Parsed:
+    """Read a RIPE RIS whois dump: origin, prefix and peer count per row.
+
+    The dump is published gzipped, so a gzip stream is unpacked first (a
+    truncated one raises rather than parsing as a shorter table). Values are
+    "<origin> <prefix>". Rows seen by fewer than 10 peers or shorter than
+    /8 (IPv4) or /16 (IPv6) are dropped, and so are AS-set origins like
+    "{1,2}", which name no single owner. Those are filters, not errors.
+    """
+    if raw[:2] == b"\x1f\x8b":
+        raw = gzip.decompress(raw)
+    out, bad = [], 0
+    for line in _text(raw).splitlines():
+        line = line.strip()
+        if not line or line.startswith("%"):
+            continue
+        parts = line.split()
+        if len(parts) < 3:
+            bad += 1
+            continue
+        origin, prefix, peers = parts[:3]
+        if origin.startswith("{"):
+            continue
+        try:
+            asn, seen = int(origin), int(peers)
+            net = ipaddress.ip_network(prefix)
+            if not 0 <= asn <= _MAX_ASN or seen < 0:
+                raise ValueError(line)
+        except ValueError:
+            bad += 1
+            continue
+        if seen >= _RIS_MIN_PEERS and net.prefixlen >= _RIS_MIN_LENGTH[net.version]:
+            out.append(f"{asn} {net}")
+    return Parsed(out, bad)
+
+
+def parse_ripe_org_asns(raw: bytes) -> Parsed:
+    """Take the aut-num of every object in a RIPE database search result."""
+    data = json.loads(_text(raw))
+    out, bad = [], 0
+    for obj in data.get("objects", {}).get("object", []):
+        for attr in obj.get("attributes", {}).get("attribute", []):
+            if attr.get("name") != "aut-num":
+                continue
+            m = _AS_RE.fullmatch(str(attr.get("value", "")).strip().upper())
+            if m and int(m.group(1)) <= _MAX_ASN:
+                out.append(f"AS{int(m.group(1))}")
+            else:
+                bad += 1
+    return Parsed(out, bad)
+
+
+def parse_v2fly_dlc(raw: bytes) -> Parsed:
+    """Pull CATEGORY-IR out of a v2fly dlc.dat.
+
+    `domain` entries come out as the bare name and `full` entries as
+    "full:<name>", so a later stage can tell a suffix from an exact match.
+    Keywords and regexps cannot be expressed as a name and are skipped.
+    """
+    out, bad = [], 0
+    for cat in geodat.decode_geosite(raw):
+        if cat.code.upper() != "CATEGORY-IR":
+            continue
+        for kind, value in cat.domains:
+            if kind not in (geodat.ROOT_DOMAIN, geodat.FULL):
+                continue
+            name = clean_domain(value)
+            if name is None:
+                bad += 1
+            else:
+                out.append(f"full:{name}" if kind == geodat.FULL else name)
+    return Parsed(out, bad)
+
+
+def parse_psl(raw: bytes) -> Parsed:
+    """Read the Public Suffix List.
+
+    ICANN rules come out as written and private-section rules as
+    "private:<rule>", lower-cased, with any "*." or "!" kept as is. They are
+    rules rather than hostnames, so they do not go through clean_domain, which
+    would strip the wildcard and reject the exception marker.
+    """
+    out, bad = [], 0
+    private = False
+    for line in _text(raw).splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("//"):
+            # the section markers are comments, so they are read before the
+            # comments are skipped
+            if "===BEGIN PRIVATE DOMAINS===" in line:
+                private = True
+            elif "===END PRIVATE DOMAINS===" in line:
+                private = False
+            continue
+        # a line is read only up to its first whitespace
+        rule = line.split()[0].lower()
+        body = rule[1:] if rule.startswith("!") else rule
+        if body.startswith("*."):
+            body = body[2:]
+        labels = body.split(".")
+        if not all(labels) or any(c in label for label in labels for c in "*!/"):
+            bad += 1
+            continue
+        out.append(f"private:{rule}" if private else rule)
+    return Parsed(out, bad)
+
+
+def parse_hosts(raw: bytes) -> Parsed:
+    names = []
     for line in _text(raw).splitlines():
         line = line.split("#", 1)[0]
         m = _HOSTS_RE.match(line)
         if m:
-            out.append(m.group(1))
-    return out
+            names.append(m.group(1))
+    return _domains(names)
 
 
-def parse_domains(raw: bytes) -> list[str]:
-    out = []
+def parse_domains(raw: bytes) -> Parsed:
+    names = []
     for line in _text(raw).splitlines():
         line = line.split("#", 1)[0].strip()
         if not line or line.startswith(("!", "[")):
             continue
         # a few upstreams ship "0.0.0.0 domain" inside a "domains" file
         parts = line.split()
-        out.append(parts[-1] if len(parts) > 1 else line)
-    return out
+        names.append(parts[-1] if len(parts) > 1 else line)
+    return _domains(names)
 
 
-def parse_adblock(raw: bytes) -> list[str]:
+def parse_adblock(raw: bytes) -> Parsed:
     """Take only plain ||domain^ rules.
 
     Anything with options ($third-party), an exception (@@) or a path is not a
     whole-domain block and must not be turned into one.
     """
-    out = []
+    names = []
     for line in _text(raw).splitlines():
         line = line.strip()
         if not line or line.startswith(("!", "@@", "[")):
@@ -347,15 +511,33 @@ def parse_adblock(raw: bytes) -> list[str]:
             continue
         m = _ADBLOCK_RE.match(line)
         if m:
-            out.append(m.group(1))
-    return out
+            names.append(m.group(1))
+    return _domains(names)
+
+
+def parse_adguard_allow(raw: bytes) -> Parsed:
+    """Take the names from plain ||name^ and @@||name^ rules.
+
+    AdGuard's allowlist files use both ||name^ and @@||name^| for "do not
+    block this name", so both are read. A rule with options ($important) or a
+    regexp is not a whole-name rule and is skipped.
+    """
+    names = []
+    for line in _text(raw).splitlines():
+        m = _ADGUARD_ALLOW_RE.match(line.strip())
+        if m:
+            names.append(m.group(1))
+    return _domains(names)
 
 
 PARSERS = {
-    "cidr": parse_cidr, "rir": parse_rir, "html_cidr": parse_html_cidr,
+    "cidr": parse_cidr, "rir": parse_rir,
     "aws_json": parse_aws_json, "google_json": parse_google_json,
     "fastly_json": parse_fastly_json, "gcore_json": parse_gcore_json,
-    "hosts": parse_hosts, "domains": parse_domains, "adblock": parse_adblock,
+    "ris": parse_ris, "ripe_org_asns": parse_ripe_org_asns,
+    "v2fly_dlc": parse_v2fly_dlc, "psl": parse_psl,
+    "hosts": parse_hosts, "domains": parse_domains,
+    "adblock": parse_adblock, "adguard_allow": parse_adguard_allow,
 }
 
 
@@ -387,7 +569,7 @@ def harvest(keys: list[str] | None = None, cache_dir: str | None = None,
     for src in wanted:
         try:
             raw = fetch(src.url, cache_dir=cache_dir)
-            values = PARSERS[src.parser](raw)
+            values = PARSERS[src.parser](raw).values
             result.values[src.key] = values
             result.bytes_read[src.key] = len(raw)
             log(f"  ok    {src.key:<22} {len(values):>7} entries  "
