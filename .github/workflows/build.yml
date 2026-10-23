@@ -129,6 +129,8 @@ jobs:
       # overwrite the canonical state, so it is skipped there.
       - name: Save state
         if: ${{ always() && steps.build.outcome != 'skipped' && (github.event_name != 'workflow_dispatch' || !inputs.dry_run) }}
+        # a state-branch outage warns instead of blocking today's release; the next run restores yesterday's state
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.meta.outputs.version }}
