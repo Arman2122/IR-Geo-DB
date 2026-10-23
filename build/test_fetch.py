@@ -215,6 +215,19 @@ o = fetch.acquire(src(mirrors=()), st, opener=Opener({PRIMARY: resp(body(600))})
                   now=NOW, sleep=noop)
 eq((o.status, len(o.values)), ("fresh", 600), "7 1000 -> 600 entries: accepted")
 
+# an expired copy can no longer stand in, so it must not veto a real shrink:
+# otherwise the source is dropped on every run until someone deletes it
+st = new_store()
+expiring = src(mirrors=(), min_entries=0, max_stale_days=14)
+seed(st, expiring, body(1000), NOW - timedelta(days=15))
+o = fetch.acquire(expiring, st, opener=Opener({PRIMARY: resp(body(400))}), now=NOW,
+                  sleep=noop)
+eq((o.status, len(o.values)), ("fresh", 400),
+   "7 no shrink check against a copy older than max_stale_days")
+o = fetch.acquire(expiring, st, opener=Opener({PRIMARY: resp(b"")}), now=NOW, sleep=noop)
+eq((o.status, len(o.values), "shrank" in o.error), ("stale", 400, True),
+   "7 the shrink check is back once a fresh copy is stored")
+
 st = new_store()
 seed(st, src(mirrors=()), body(50), NOW - timedelta(days=1))
 o = fetch.acquire(src(mirrors=()), st, opener=Opener({PRIMARY: resp(GOOD)}),

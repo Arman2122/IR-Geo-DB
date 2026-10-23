@@ -40,7 +40,8 @@ class Source:
     homepage: str = ""
     optional: bool = False    # a failure here warns instead of aborting
     note: str = ""
-    # how fetch.py acquires and trusts it; the defaults reject nothing
+    # how fetch.py acquires and trusts it. The floors default to off; the
+    # shrink guard is on, but needs an unexpired stored copy of >= 100 entries
     mirrors: tuple[str, ...] = ()     # tried in order after url
     min_entries: int = 0              # fewer parsed entries: reject the body
     min_bytes: int = 0                # a smaller raw body: reject it

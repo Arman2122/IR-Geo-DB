@@ -262,6 +262,12 @@ def acquire(src, store: StateStore, *, opener=http_get, cache_dir: str | None = 
     parser = sources.PARSERS[src.parser]
     stored = store.load(src.key)
     old_values, meta = stored if stored else (None, {})
+    age = (max(0.0, (now - _parse_iso(meta["validated_at"])).total_seconds() / 86400)
+           if stored else 0.0)
+    usable = stored is not None and age <= src.max_stale_days
+    # a copy too old to stand in must not veto a new body either, or one
+    # real shrink would drop the source on every run from then on
+    baseline = old_values if usable else None
     errors = []
 
     for i, url in enumerate((src.url, *src.mirrors)):
@@ -284,7 +290,7 @@ def acquire(src, store: StateStore, *, opener=http_get, cache_dir: str | None = 
                 _check_age(src, last_modified, now)
             else:
                 parsed = _validate(src, parser, resp.body, resp.headers,
-                                   old_values, now)
+                                   baseline, now)
         except (FetchError, _Rejected) as exc:
             errors.append(f"{served_by}: {exc}")
             continue
@@ -313,8 +319,7 @@ def acquire(src, store: StateStore, *, opener=http_get, cache_dir: str | None = 
     if stored is None:
         return Outcome(key=src.key, status="dropped", fetched_at=stamp,
                        error=f"{error}; nothing stored")
-    age = max(0.0, (now - _parse_iso(meta["validated_at"])).total_seconds() / 86400)
-    if age <= src.max_stale_days:
+    if usable:
         return _from_meta(src.key, "stale", "state", old_values, meta, stamp,
                           stale_days=round(age, 1), error=error)
     return Outcome(key=src.key, status="dropped", fetched_at=stamp,
