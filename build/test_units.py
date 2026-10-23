@@ -15,6 +15,7 @@ from __future__ import annotations
 import gzip
 import ipaddress
 import os
+import re
 import sys
 import tempfile
 
@@ -315,6 +316,158 @@ for name in ("ris", "ripe_org_asns", "v2fly_dlc", "psl", "adguard_allow"):
     ok(name in sources.PARSERS, f"parser '{name}' is registered")
 ok(all(s.parser in sources.PARSERS for s in sources.SOURCES),
    "every registered source names a parser that exists")
+
+
+# ------------------------------------------------------------ source registry
+
+keys = [s.key for s in sources.SOURCES]
+eq(len(keys), len(set(keys)), "source keys unique")
+ok(all(s.parser in sources.PARSERS for s in sources.SOURCES), "every parser exists")
+ok(all(u.startswith("https://") for s in sources.SOURCES for u in (s.url, *s.mirrors)),
+   "https only")
+ok(all(s.license and s.homepage for s in sources.SOURCES),
+   "license + homepage on every source")
+eq({s.key for s in sources.SOURCES if not s.optional}, {"rir-ripencc", "ir-domains"},
+   "only two required")
+ok(all(f"ripe-org-{o.lower()}" in keys for p in sources.PROVIDERS.values() for o in p["orgs"]),
+   "org sources exist")
+ok(all(k in keys for p in sources.PROVIDERS.values() for k in p["lists"]),
+   "provider lists exist")
+ok(sources.BY_KEY["threat-ip-hagezi"].max_stale_days == 7
+   and sources.BY_KEY["arvancloud"].max_stale_days == 90, "stale windows")
+ok(not any(k in keys for k in ("ads-adguard", "malware-urlhaus", "phishing-db",
+                               "threat-ip-phishing", "ads-persian")),
+   "removed sources gone")
+
+eq(sources.PROVIDERS, {
+    "ArvanCloud": {"orgs": ["ORG-NAAP1-RIPE", "ORG-NAAC1-RIPE", "ORG-AGTL2-RIPE"],
+                   "lists": ["arvancloud"]},
+    "Sotoon": {"orgs": ["ORG-HUCC1-RIPE", "ORG-IB117-RIPE"], "lists": []},
+    "Derak": {"orgs": ["ORG-ENDC1-RIPE"], "lists": ["derak-v4", "derak-v6"]},
+    "IranServer": {"orgs": ["ORG-GWSN7-RIPE"], "lists": ["iranserver"]},
+    "MizbanCloud": {"orgs": ["ORG-SAML1-RIPE"], "lists": ["mizbancloud"]},
+    "ParsPack": {"orgs": [], "lists": ["parspack"]},
+}, "providers: exactly the spec 1.1 registry")
+org_keys = [k for k in keys if k.startswith("ripe-org-")]
+eq(sorted(org_keys),
+   sorted(f"ripe-org-{o.lower()}" for p in sources.PROVIDERS.values()
+          for o in p["orgs"]),
+   "one RIPE org source per provider organisation, and no others")
+ok(all(sources.BY_KEY[k].parser == "ripe_org_asns"
+       and sources.BY_KEY[k].max_stale_days == 90
+       and sources.BY_KEY[k].min_bytes == 50
+       and sources.BY_KEY[k].license == "RIPE Database (public)"
+       and sources.BY_KEY[k].kind == "ip" for k in org_keys),
+   "RIPE org sources: parser, 90-day window, 50-byte floor, licence")
+eq(sources.BY_KEY["ripe-org-org-hucc1-ripe"].url,
+   "https://rest.db.ripe.net/search.json?query-string=ORG-HUCC1-RIPE"
+   "&inverse-attribute=org&type-filter=aut-num&flags=no-referenced",
+   "RIPE org source: the REST inverse query from the spec")
+
+eq([(s.key, s.attribution) for s in sources.SOURCES if s.attribution],
+   [("ris-v4", "Contains RIPE NCC RIS data © RIPE NCC"),
+    ("ris-v6", "Contains RIPE NCC RIS data © RIPE NCC")],
+   "only the RIS sources carry an attribution, and it is the RIPE NCC text")
+eq((sources.BY_KEY["ris-v4"].url, sources.BY_KEY["ris-v6"].url),
+   ("https://www.ris.ripe.net/dumps/riswhoisdump.IPv4.gz",
+    "https://www.ris.ripe.net/dumps/riswhoisdump.IPv6.gz"), "RIS dump URLs")
+
+# stale window per kind of data (spec 2, rulings R10)
+STALE = (("rir-", 14), ("ris-", 14), ("xc-", 14), ("cloud-", 30),
+         ("ripe-org-", 90), ("threat-ip-", 7), ("malware-", 7),
+         ("phishing-", 7), ("crypto-", 7), ("ads-", 30), ("nsfw-", 30),
+         ("allow-", 30), ("ir-", 30), ("psl", 30),
+         ("arvancloud", 90), ("parspack", 90), ("derak-", 90),
+         ("iranserver", 90), ("mizbancloud", 90))
+got = {s.key: s.max_stale_days for s in sources.SOURCES}
+want = {k: next(d for p, d in STALE if k.startswith(p)) for k in got}
+eq(got, want, "max_stale_days follows the kind of data")
+
+# the three HaGeZi lists carry the same three official mirrors
+for key, path in (("ads-hagezi", "wildcard/light-onlydomains.txt"),
+                  ("malware-hagezi-tif", "wildcard/tif.mini-onlydomains.txt"),
+                  ("threat-ip-hagezi", "ips/tif.txt")):
+    eq(sources.BY_KEY[key].url,
+       f"https://raw.githubusercontent.com/hagezi/dns-blocklists/main/{path}",
+       f"{key}: primary URL")
+    eq(sources.BY_KEY[key].mirrors,
+       (f"https://gitlab.com/hagezi/mirror/-/raw/main/dns-blocklists/{path}",
+        f"https://codeberg.org/hagezi/mirror2/raw/branch/main/dns-blocklists/{path}",
+        f"https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/{path}"),
+       f"{key}: gitlab, codeberg and jsDelivr mirrors")
+
+# every GitHub-raw list can fall back to jsDelivr, which serves the same file
+GH_RAW = re.compile(r"^https://raw\.githubusercontent\.com/([^/]+)/([^/]+)/([^/]+)/(.+)$")
+for s in sources.SOURCES:
+    m = GH_RAW.match(s.url)
+    if m and not s.key.startswith("allow-") and "hagezi" not in s.key \
+            and not s.key.startswith("xc-"):
+        owner, repo, branch, path = m.groups()
+        ok(f"https://cdn.jsdelivr.net/gh/{owner}/{repo}@{branch}/{path}" in s.mirrors,
+           f"{s.key}: has the jsDelivr mirror of its GitHub-raw URL")
+ok(all(len(set((s.url, *s.mirrors))) == 1 + len(s.mirrors) for s in sources.SOURCES),
+   "no URL repeated within a source")
+eq(sources.BY_KEY["ir-domains"].mirrors,
+   ("https://raw.githubusercontent.com/bootmortis/iran-hosted-domains/release/domains.txt",
+    "https://cdn.jsdelivr.net/gh/bootmortis/iran-hosted-domains@release/domains.txt"),
+   "ir-domains: the spec 1.2 mirrors")
+eq(sources.BY_KEY["psl"].mirrors,
+   ("https://raw.githubusercontent.com/publicsuffix/list/main/public_suffix_list.dat",),
+   "psl: the GitHub mirror")
+ok(not any("MasterKia" in u for s in sources.SOURCES for u in (s.url, *s.mirrors, s.homepage)),
+   "the MasterKia PersianBlocker URL is gone")
+
+# floors: a source may skip min_entries only if it can legitimately be empty,
+# and then min_bytes is what guards it. A RIPE org that has ASNs is not one of
+# those: an empty answer for it means the lookup broke.
+EMPTY_OK = {"threat-ip-malware", "rir-apnic", "rir-arin", "rir-lacnic",
+            "rir-afrinic"}
+ok(all(s.min_bytes > 0 for s in sources.SOURCES), "every source has a size floor")
+ok(all(s.min_entries > 0 for s in sources.SOURCES if s.key not in EMPTY_OK),
+   "every source that is never empty has an entry floor")
+ok(all(s.min_entries == 0 for s in sources.SOURCES if s.key in EMPTY_OK),
+   "sources that can be empty rely on min_bytes alone")
+# a header-only Feodo file is valid and must get past the byte floor
+FEODO_EMPTY = "\n".join([
+    "#" * 64,
+    "# abuse.ch Feodo Tracker Botnet C2 IP Blocklist (IPs only)     #",
+    "# Last updated: 2026-03-04 14:28:39 UTC                        #",
+    "#                                                              #",
+    "# Terms Of Use: https://feodotracker.abuse.ch/blocklist/       #",
+    "# For questions please contact feodotracker [at] abuse.ch      #",
+    "#" * 64, "#", "# DstIP", "# END 0 entries"]).encode()
+eq(sources.parse_cidr(FEODO_EMPTY).values, [], "Feodo: a header-only file has no entries")
+ok(len(FEODO_EMPTY) > sources.BY_KEY["threat-ip-malware"].min_bytes,
+   "Feodo: min_bytes is below an empty but valid file")
+eq({s.key for s in sources.SOURCES if s.max_shrink != 0.5}, {"threat-ip-malware"},
+   "only Feodo overrides the shrink guard")
+eq(sources.BY_KEY["threat-ip-malware"].max_shrink, 1.0,
+   "Feodo may legitimately fall to near zero")
+
+# licences stated in the rulings (R11)
+for prefix, lic in (("rir-", "Registry public data"),
+                    ("ris-", "RIPE NCC RIS data (attribution required)"),
+                    ("ripe-org-", "RIPE Database (public)")):
+    ok(all(s.license == lic for s in sources.SOURCES if s.key.startswith(prefix)),
+       f"{prefix}*: licence is '{lic}'")
+ok(all(s.license in ("Provider-published", "All rights reserved")
+       for s in sources.SOURCES if s.key.startswith("cloud-")
+       or s.key in ("arvancloud", "parspack", "derak-v4", "derak-v6",
+                    "iranserver", "mizbancloud")),
+   "cloud and Iranian provider lists: Provider-published or All rights reserved")
+eq({k: sources.BY_KEY[k].parser for k in ("ads-persian-hosts", "ads-persian-ads",
+                                         "ads-persian-trackers", "ir-v2fly", "psl",
+                                         "allow-adguard-exclusions",
+                                         "allow-adguard-exceptions",
+                                         "nsfw-stevenblack-gambling",
+                                         "threat-ip-hagezi", "iranserver")},
+   {"ads-persian-hosts": "domains", "ads-persian-ads": "domains",
+    "ads-persian-trackers": "domains", "ir-v2fly": "v2fly_dlc", "psl": "psl",
+    "allow-adguard-exclusions": "adguard_allow",
+    "allow-adguard-exceptions": "adguard_allow",
+    "nsfw-stevenblack-gambling": "hosts", "threat-ip-hagezi": "cidr",
+    "iranserver": "cidr"},
+   "new sources use the parsers the brief names")
 
 
 # ------------------------------------------------------------ domain filters

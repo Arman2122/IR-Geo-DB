@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """Where the data comes from, and how each feed is parsed.
 
-Everything is fetched from the primary publisher. IP allocations come from the
-five Regional Internet Registries, Iranian CDN ranges from the Iranian CDNs,
-each blocklist from the project that maintains it.
+Every input comes from the most authoritative publisher that can be reached
+from a GitHub runner: the five Regional Internet Registries for allocations,
+RIPE NCC for routing and for each provider's ASNs, the Iranian providers for
+their own ranges, and the project that maintains each blocklist. An
+aggregator is used only where the authority is unreachable, and says so.
 
 An address is Iranian only if a RIR delegated it to an organisation whose
-registered country is IR. ipverse and ipdeny are fetched purely to cross-check
-that parsing and never contribute addresses.
+registered country is IR (bgp.py then adjusts that to what is routed). ipverse
+and ipdeny are fetched purely to cross-check that parsing and never
+contribute addresses.
 
 How a source is fetched and when its body is trusted lives in fetch.py.
 
@@ -58,117 +61,373 @@ class Source:
 
 
 # --------------------------------------------------------------- the registry
+#
+# Every source is tagged with where it comes from, using the classes in the
+# design spec (section 1):
+#   authority   the body that creates the data (RIRs, RIPE NCC, a provider's
+#               own list, a national CERT)
+#   derived     computed by this project from authority data
+#   maintainer  the project that curates a blocklist
+#   aggregator  a third party that republishes someone else's data
+#
+# A floor (min_entries, min_bytes) is about 70 % of what the source returned
+# on 2026-10-23, rounded down to two significant digits, with the measured
+# figure beside it. A source under 20 entries gets about half instead, so a
+# small list is not tripped by one removed line. The shrink guard stays at
+# its default except where a source legitimately swings to near zero.
 
+# Iranian infrastructure providers (spec 1.1). A provider's address space is
+# derived by this project: each RIPE organisation is looked up for its ASNs
+# (the `ripe-org-*` sources below) and every prefix those ASNs announce in RIS
+# is taken from the BGP table. `lists` are the provider's own published
+# ranges, which are read as well. A provider with no organisation owns no ASN
+# of its own; one with no list publishes none.
+PROVIDERS: dict[str, dict] = {
+    "ArvanCloud": {"orgs": ["ORG-NAAP1-RIPE", "ORG-NAAC1-RIPE", "ORG-AGTL2-RIPE"],
+                   "lists": ["arvancloud"]},
+    "Sotoon": {"orgs": ["ORG-HUCC1-RIPE", "ORG-IB117-RIPE"], "lists": []},
+    "Derak": {"orgs": ["ORG-ENDC1-RIPE"], "lists": ["derak-v4", "derak-v6"]},
+    "IranServer": {"orgs": ["ORG-GWSN7-RIPE"], "lists": ["iranserver"]},
+    "MizbanCloud": {"orgs": ["ORG-SAML1-RIPE"], "lists": ["mizbancloud"]},
+    "ParsPack": {"orgs": [], "lists": ["parspack"]},
+}
+
+# (rir, url, min_entries, min_bytes). `entries` is the number of Iranian
+# prefixes and ASNs the file yields. Only RIPE NCC has Iranian records in
+# any number, so the others keep min_entries at 0 and rely on min_bytes: a
+# file that is not the full delegation list is rejected on size.
 RIR_STATS = [
-    ("ripencc", "https://ftp.ripe.net/pub/stats/ripencc/delegated-ripencc-extended-latest"),
-    ("apnic", "https://ftp.apnic.net/stats/apnic/delegated-apnic-extended-latest"),
-    ("arin", "https://ftp.arin.net/pub/stats/arin/delegated-arin-extended-latest"),
-    ("lacnic", "https://ftp.lacnic.net/pub/stats/lacnic/delegated-lacnic-extended-latest"),
-    ("afrinic", "https://ftp.afrinic.net/pub/stats/afrinic/delegated-afrinic-extended-latest"),
+    ("ripencc", "https://ftp.ripe.net/pub/stats/ripencc/delegated-ripencc-extended-latest",
+     2_300, 12_000_000),  # 3,407 entries, 18.1 MB on 2026-10-23
+    ("apnic", "https://ftp.apnic.net/stats/apnic/delegated-apnic-extended-latest",
+     0, 6_400_000),  # 0 entries, 9.3 MB on 2026-10-23
+    ("arin", "https://ftp.arin.net/pub/stats/arin/delegated-arin-extended-latest",
+     0, 9_000_000),  # 0 entries, 12.9 MB on 2026-10-23
+    ("lacnic", "https://ftp.lacnic.net/pub/stats/lacnic/delegated-lacnic-extended-latest",
+     0, 3_200_000),  # 0 entries, 4.6 MB on 2026-10-23
+    ("afrinic", "https://ftp.afrinic.net/pub/stats/afrinic/delegated-afrinic-extended-latest",
+     0, 700_000),  # 0 entries, 1.0 MB on 2026-10-23
 ]
 
+# One lookup per provider organisation, so a newly registered ASN is picked up
+# without a code change. Each org holds only a handful of ASNs, so min_entries
+# is about half of the ASNs found (at least 1): an empty answer for an org
+# that has ASNs is a sign the lookup is broken, not that it lost them all.
+_RIPE_ORG_URL = ("https://rest.db.ripe.net/search.json?query-string={org}"
+                 "&inverse-attribute=org&type-filter=aut-num&flags=no-referenced")
+_RIPE_ORG_FLOOR = {
+    "ORG-NAAP1-RIPE": 1,  # 2 found on 2026-10-23
+    "ORG-NAAC1-RIPE": 1,  # 1 found on 2026-10-23
+    "ORG-AGTL2-RIPE": 1,  # 3 found on 2026-10-23
+    "ORG-HUCC1-RIPE": 2,  # 4 found on 2026-10-23
+    "ORG-IB117-RIPE": 1,  # 1 found on 2026-10-23
+    "ORG-ENDC1-RIPE": 1,  # 2 found on 2026-10-23
+    "ORG-GWSN7-RIPE": 1,  # 3 found on 2026-10-23
+    "ORG-SAML1-RIPE": 1,  # 3 found on 2026-10-23
+}
+
+HAGEZI = "hagezi/dns-blocklists"
+
+
+def _hagezi_mirrors(path: str) -> tuple[str, ...]:
+    """HaGeZi's own mirrors of a file, then jsDelivr's copy."""
+    return (f"https://gitlab.com/hagezi/mirror/-/raw/main/dns-blocklists/{path}",
+            f"https://codeberg.org/hagezi/mirror2/raw/branch/main/dns-blocklists/{path}",
+            f"https://cdn.jsdelivr.net/gh/{HAGEZI}@latest/{path}")
+
+
+def _jsdelivr(owner: str, repo: str, branch: str, path: str) -> str:
+    return f"https://cdn.jsdelivr.net/gh/{owner}/{repo}@{branch}/{path}"
+
+
+_PB = "https://raw.githubusercontent.com/PersianBlocker/PersianBlocker/main/"
+
 SOURCES: list[Source] = [
-    # ---- tier 1: registry truth. Iran's space is overwhelmingly RIPE NCC,
-    # but an Iranian org can hold space from any RIR, so all five are read.
+    # ---- IP: the registries. Origin: authority. Iran's space is
+    # overwhelmingly RIPE NCC, but an Iranian org can hold space from any
+    # RIR, so all five are read. RIPE NCC is the only required source besides
+    # ir-domains: without it there is no Iranian address set at all.
     *[
         Source(key=f"rir-{rir}", name=f"{rir.upper()} delegated statistics",
                url=url, parser="rir", kind="ip", tier="registry",
                license="Registry public data",
                homepage="https://www.nro.net/about/rirs/statistics/",
                optional=(rir != "ripencc"),
+               min_entries=min_entries, min_bytes=min_bytes,
+               max_stale_days=14,
                note="authoritative country delegation")
-        for rir, url in RIR_STATS
+        for rir, url, min_entries, min_bytes in RIR_STATS
     ],
 
-    # ---- tier 2: first-party Iranian infrastructure. Published by the
-    # operators themselves; the only authority on their own ranges.
+    # ---- IP: BGP. Origin: authority (RIPE NCC's RIS collectors), used by
+    # bgp.py to adjust the registry set to what is actually routed from Iran.
+    # RIPE NCC grants the use on condition of the attribution below.
+    Source(key="ris-v4", name="RIPE RIS IPv4 routing table", parser="ris",
+           kind="ip", tier="registry", optional=True,
+           url="https://www.ris.ripe.net/dumps/riswhoisdump.IPv4.gz",
+           license="RIPE NCC RIS data (attribution required)",
+           homepage="https://www.ripe.net/analyse/internet-measurements/routing-information-service-ris/",
+           attribution="Contains RIPE NCC RIS data © RIPE NCC",
+           min_entries=790_000, min_bytes=4_000_000,  # 1,133,597 entries, 5.7 MB on 2026-10-23
+           max_stale_days=14),
+    Source(key="ris-v6", name="RIPE RIS IPv6 routing table", parser="ris",
+           kind="ip", tier="registry", optional=True,
+           url="https://www.ris.ripe.net/dumps/riswhoisdump.IPv6.gz",
+           license="RIPE NCC RIS data (attribution required)",
+           homepage="https://www.ripe.net/analyse/internet-measurements/routing-information-service-ris/",
+           attribution="Contains RIPE NCC RIS data © RIPE NCC",
+           min_entries=180_000, min_bytes=930_000,  # 267,407 entries, 1.3 MB on 2026-10-23
+           max_stale_days=14),
+
+    # ---- IP: provider ASNs. Origin: authority (the RIPE database), derived
+    # by us: the ASNs registered to each provider's organisation, which bgp.py
+    # then turns into the prefixes they announce. See PROVIDERS above.
+    *[
+        Source(key=f"ripe-org-{org.lower()}", name=f"RIPE database ASNs of {org}",
+               url=_RIPE_ORG_URL.format(org=org), parser="ripe_org_asns",
+               kind="ip", tier="registry", optional=True,
+               license="RIPE Database (public)",
+               homepage="https://www.ripe.net/manage-ips-and-asns/db/",
+               min_entries=_RIPE_ORG_FLOOR[org], min_bytes=50,
+               max_stale_days=90,
+               note=f"{provider}: ASNs registered to {org}")
+        for provider, info in PROVIDERS.items() for org in info["orgs"]
+    ],
+
+    # ---- IP: ranges the Iranian providers publish themselves. Origin:
+    # authority, each for its own space. They are read next to the networks
+    # derived above because a provider may announce through someone else's AS.
     Source(key="arvancloud", name="ArvanCloud", parser="cidr", kind="ip",
            tier="provider", url="https://www.arvancloud.ir/en/ips.txt",
            homepage="https://www.arvancloud.ir/en/dev/ips",
-           license="All rights reserved", optional=True),
+           license="All rights reserved", optional=True,
+           min_entries=7, min_bytes=110,  # 14 entries, 220 bytes on 2026-10-23
+           max_stale_days=90),
     Source(key="parspack", name="ParsPack CDN", parser="cidr", kind="ip",
            tier="provider", url="https://parspack.com/cdnips.txt",
            homepage="https://parspack.com", license="All rights reserved",
-           optional=True, note="includes foreign edge nodes"),
+           optional=True, note="includes foreign edge nodes",
+           min_entries=34, min_bytes=570,  # 49 entries, 828 bytes on 2026-10-23
+           max_stale_days=90),
+    Source(key="derak-v4", name="Derak Cloud", parser="cidr", kind="ip",
+           tier="provider", url="https://api.derak.cloud/public/ipv4",
+           homepage="https://derak.cloud", license="Provider-published",
+           optional=True,
+           min_entries=9, min_bytes=160,  # 19 entries, 323 bytes on 2026-10-23
+           max_stale_days=90),
+    Source(key="derak-v6", name="Derak Cloud", parser="cidr", kind="ip",
+           tier="provider", url="https://api.derak.cloud/public/ipv6",
+           homepage="https://derak.cloud", license="Provider-published",
+           optional=True,
+           min_entries=5, min_bytes=100,  # 10 entries, 207 bytes on 2026-10-23
+           max_stale_days=90),
+    Source(key="iranserver", name="IranServer", parser="cidr", kind="ip",
+           tier="provider", url="https://ips.f95.com/ips.txt",
+           homepage="https://www.iranserver.com", license="Provider-published",
+           optional=True, note="published as bare /32 addresses",
+           min_entries=15, min_bytes=210,  # 22 entries, 302 bytes on 2026-10-23
+           max_stale_days=90),
+    Source(key="mizbancloud", name="MizbanCloud", parser="cidr", kind="ip",
+           tier="provider", url="https://mizbancloud.com/ips.txt",
+           homepage="https://mizbancloud.com", license="Provider-published",
+           optional=True,
+           min_entries=4, min_bytes=66,  # 8 entries, 132 bytes on 2026-10-23
+           max_stale_days=90),
 
     # The ITO government messenger-IP page renders its table client-side, so
     # there is nothing to scrape from the HTML. It is no loss: Iranian
     # messengers run on Iranian address space, which the registry feed
     # already covers.
 
-    # ---- cross-checks: independent implementations of the same RIR parse.
-    # Used to validate our parser, never to add addresses.
+    # ---- IP: cross-checks. Origin: aggregator, deliberately: independent
+    # implementations of the same RIR parse, used to validate ours and never
+    # to add addresses.
     Source(key="xc-ipverse-v4", name="ipverse rir-ip", parser="cidr", kind="ip",
            tier="crosscheck", optional=True, license="Public domain",
            homepage="https://github.com/ipverse/rir-ip",
-           url="https://raw.githubusercontent.com/ipverse/rir-ip/master/country/ir/ipv4-aggregated.txt"),
+           url="https://raw.githubusercontent.com/ipverse/rir-ip/master/country/ir/ipv4-aggregated.txt",
+           min_entries=1_200, min_bytes=19_000,  # 1,747 entries, 28 KB on 2026-10-23
+           max_stale_days=14),
     Source(key="xc-ipverse-v6", name="ipverse rir-ip", parser="cidr", kind="ip",
            tier="crosscheck", optional=True, license="Public domain",
            homepage="https://github.com/ipverse/rir-ip",
-           url="https://raw.githubusercontent.com/ipverse/rir-ip/master/country/ir/ipv6-aggregated.txt"),
+           url="https://raw.githubusercontent.com/ipverse/rir-ip/master/country/ir/ipv6-aggregated.txt",
+           min_entries=400, min_bytes=6_100,  # 574 entries, 8,717 bytes on 2026-10-23
+           max_stale_days=14),
     Source(key="xc-ipdeny-v4", name="ipdeny country zones", parser="cidr",
            kind="ip", tier="crosscheck", optional=True, license="Free to use",
            homepage="https://www.ipdeny.com",
-           url="https://www.ipdeny.com/ipblocks/data/aggregated/ir-aggregated.zone"),
+           url="https://www.ipdeny.com/ipblocks/data/aggregated/ir-aggregated.zone",
+           min_entries=1_200, min_bytes=19_000,  # 1,747 entries, 27 KB on 2026-10-23
+           max_stale_days=14),
 
-    # ---- foreign clouds and CDNs, subtracted from the Iranian set
+    # ---- IP: foreign clouds and CDNs, subtracted from the Iranian set as a
+    # guard. Origin: authority, each cloud's own published ranges. They change
+    # slowly, so a stored copy may stand in for 30 days.
     Source(key="cloud-cloudflare-v4", name="Cloudflare", parser="cidr", kind="ip",
            tier="cloud", url="https://www.cloudflare.com/ips-v4", optional=True,
-           homepage="https://www.cloudflare.com/ips"),
+           license="Provider-published", homepage="https://www.cloudflare.com/ips",
+           min_entries=7, min_bytes=110,  # 15 entries, 230 bytes on 2026-10-23
+           max_stale_days=30),
     Source(key="cloud-cloudflare-v6", name="Cloudflare", parser="cidr", kind="ip",
            tier="cloud", url="https://www.cloudflare.com/ips-v6", optional=True,
-           homepage="https://www.cloudflare.com/ips"),
+           license="Provider-published", homepage="https://www.cloudflare.com/ips",
+           min_entries=3, min_bytes=52,  # 7 entries, 104 bytes on 2026-10-23
+           max_stale_days=30),
     Source(key="cloud-aws", name="Amazon AWS", parser="aws_json", kind="ip",
            tier="cloud", url="https://ip-ranges.amazonaws.com/ip-ranges.json",
-           optional=True, homepage="https://ip-ranges.amazonaws.com"),
+           optional=True, license="Provider-published",
+           homepage="https://ip-ranges.amazonaws.com",
+           min_entries=12_000, min_bytes=1_900_000,  # 17,666 entries, 2.7 MB on 2026-10-23
+           max_stale_days=30),
     Source(key="cloud-google", name="Google", parser="google_json", kind="ip",
            tier="cloud", url="https://www.gstatic.com/ipranges/goog.json",
-           optional=True, homepage="https://www.gstatic.com/ipranges/goog.json"),
+           optional=True, license="Provider-published",
+           homepage="https://www.gstatic.com/ipranges/goog.json",
+           min_entries=100, min_bytes=4_300,  # 145 entries, 6,186 bytes on 2026-10-23
+           max_stale_days=30),
     Source(key="cloud-gcloud", name="Google Cloud", parser="google_json", kind="ip",
            tier="cloud", url="https://www.gstatic.com/ipranges/cloud.json",
-           optional=True, homepage="https://www.gstatic.com/ipranges/cloud.json"),
+           optional=True, license="Provider-published",
+           homepage="https://www.gstatic.com/ipranges/cloud.json",
+           min_entries=780, min_bytes=80_000,  # 1,128 entries, 115 KB on 2026-10-23
+           max_stale_days=30),
     Source(key="cloud-fastly", name="Fastly", parser="fastly_json", kind="ip",
            tier="cloud", url="https://api.fastly.com/public-ip-list",
-           optional=True, homepage="https://api.fastly.com/public-ip-list"),
+           optional=True, license="Provider-published",
+           homepage="https://api.fastly.com/public-ip-list",
+           min_entries=16, min_bytes=310,  # 24 entries, 451 bytes on 2026-10-23
+           max_stale_days=30),
     Source(key="cloud-gcore", name="G-Core", parser="gcore_json", kind="ip",
            tier="cloud", url="https://api.gcore.com/cdn/public-ip-list",
-           optional=True, homepage="https://gcore.com"),
+           optional=True, license="Provider-published",
+           homepage="https://gcore.com",
+           min_entries=1_200, min_bytes=29_000,  # 1,836 entries, 42 KB on 2026-10-23
+           max_stale_days=30),
 
-    # ---- Iranian domains
+    # ---- IP: threat feeds, for firewall drop rules rather than DNS. A
+    # stale threat feed is worth little, so a stored copy stands in for 7
+    # days only.
+    # Feodo Tracker is the authority for its own botnet C2 list (abuse.ch,
+    # CC0). The list legitimately swings to near zero as C2s are taken down:
+    # on 2026-10-23 the file held 5 entries (565 bytes, of which the empty
+    # header-only file is ~500). So it has no entry floor and no shrink guard,
+    # and a byte floor below an empty-but-valid file keeps out only a
+    # truncated or error body.
+    Source(key="threat-ip-malware", name="Feodo Tracker botnet C2",
+           parser="cidr", kind="ip", tier="blocklist", license="CC0",
+           optional=True, homepage="https://feodotracker.abuse.ch/blocklist/",
+           url="https://feodotracker.abuse.ch/downloads/ipblocklist.txt",
+           min_entries=0, min_bytes=300,  # 5 entries, 565 bytes on 2026-10-23; header-only ~500
+           max_shrink=1.0, max_stale_days=7),
+    # HaGeZi's TIF IP list: the maintainer's aggregate of threat feeds, under
+    # the project's own licence, with its official mirrors. The phishing IP
+    # feed was Phishing.Database, which stopped updating on 2026-10-02 and
+    # carried Google, Cloudflare and CloudFront addresses; the `phishing` IP
+    # set stays empty so geoip:phishing still resolves.
+    Source(key="threat-ip-hagezi", name="HaGeZi Threat Intelligence Feeds (IPs)",
+           parser="cidr", kind="ip", tier="blocklist", license="GPL-3.0",
+           optional=True, homepage="https://github.com/hagezi/dns-blocklists",
+           url=f"https://raw.githubusercontent.com/{HAGEZI}/main/ips/tif.txt",
+           mirrors=_hagezi_mirrors("ips/tif.txt"),
+           min_entries=26_000, min_bytes=370_000,  # 37,191 entries, 530 KB on 2026-10-23
+           max_stale_days=7),
+
+    # ---- domains: Iranian. bootmortis is an aggregator, kept only because
+    # its upstreams (enamad.ir and ito.gov.ir) time out from GitHub runners,
+    # so the registries cannot be read directly. It is the one required
+    # domain source; v2fly below is an independent second opinion.
     Source(key="ir-domains", name="Iran Hosted Domains", parser="domains",
            kind="domain", tier="blocklist", license="MIT",
            homepage="https://github.com/bootmortis/iran-hosted-domains",
-           url="https://github.com/bootmortis/iran-hosted-domains/releases/latest/download/domains.txt"),
+           url="https://github.com/bootmortis/iran-hosted-domains/releases/latest/download/domains.txt",
+           mirrors=("https://raw.githubusercontent.com/bootmortis/iran-hosted-domains/release/domains.txt",
+                    "https://cdn.jsdelivr.net/gh/bootmortis/iran-hosted-domains@release/domains.txt"),
+           min_entries=88_000, min_bytes=1_200_000,  # 127,069 entries, 1.8 MB on 2026-10-23
+           max_stale_days=30),
+    # v2fly's CATEGORY-IR is a hand-curated list from a different community
+    # (origin: maintainer), read with our own dlc.dat decoder.
+    Source(key="ir-v2fly", name="v2fly domain-list-community (category-ir)",
+           parser="v2fly_dlc", kind="domain", tier="blocklist", license="MIT",
+           optional=True, homepage="https://github.com/v2fly/domain-list-community",
+           url="https://github.com/v2fly/domain-list-community/releases/latest/download/dlc.dat",
+           min_entries=130, min_bytes=1_600_000,  # 190 entries, 2.4 MB on 2026-10-23
+           max_stale_days=30),
+    # The Public Suffix List (origin: authority, Mozilla). Used only as a
+    # filter, so a shared platform such as a dynamic-DNS suffix is never
+    # published as an Iranian or blocked domain.
+    Source(key="psl", name="Public Suffix List", parser="psl", kind="domain",
+           tier="official", license="MPL-2.0", optional=True,
+           homepage="https://publicsuffix.org",
+           url="https://publicsuffix.org/list/public_suffix_list.dat",
+           mirrors=("https://raw.githubusercontent.com/publicsuffix/list/main/public_suffix_list.dat",),
+           min_entries=7_200, min_bytes=230_000,  # 10,397 entries, 338 KB on 2026-10-23
+           max_stale_days=30),
 
-    # ---- advertising and tracking
-    # Despite the [AdBlock] header this file is a plain domain list with #
+    # ---- domains: advertising and tracking. Origin: maintainer. The
+    # PersianBlocker fork is read as its three domain lists; the hosts file
+    # despite its name, and both domain files, are plain domain lists with #
     # comments, not hosts syntax.
-    Source(key="ads-persian", name="PersianBlocker", parser="domains",
-           kind="domain", tier="blocklist", license="AGPL-3.0",
-           homepage="https://github.com/MasterKia/PersianBlocker",
-           url="https://raw.githubusercontent.com/MasterKia/PersianBlocker/main/PersianBlockerHosts.txt"),
+    Source(key="ads-persian-hosts", name="PersianBlocker hosts",
+           parser="domains", kind="domain", tier="blocklist",
+           license="AGPL-3.0", optional=True,
+           homepage="https://github.com/PersianBlocker/PersianBlocker",
+           url=_PB + "PersianBlockerHosts.txt",
+           mirrors=(_jsdelivr("PersianBlocker", "PersianBlocker", "main",
+                              "PersianBlockerHosts.txt"),),
+           min_entries=180, min_bytes=8_000,  # 261 entries, 11 KB on 2026-10-23
+           max_stale_days=30),
+    Source(key="ads-persian-ads", name="PersianBlocker ads domains",
+           parser="domains", kind="domain", tier="blocklist",
+           license="AGPL-3.0", optional=True,
+           homepage="https://github.com/PersianBlocker/PersianBlocker",
+           url=_PB + "PersianBlockerAds-Domains.txt",
+           mirrors=(_jsdelivr("PersianBlocker", "PersianBlocker", "main",
+                              "PersianBlockerAds-Domains.txt"),),
+           min_entries=23, min_bytes=850,  # 34 entries, 1,215 bytes on 2026-10-23
+           max_stale_days=30),
+    Source(key="ads-persian-trackers", name="PersianBlocker trackers domains",
+           parser="domains", kind="domain", tier="blocklist",
+           license="AGPL-3.0", optional=True,
+           homepage="https://github.com/PersianBlocker/PersianBlocker",
+           url=_PB + "PersianBlockerTrackers-Domains.txt",
+           mirrors=(_jsdelivr("PersianBlocker", "PersianBlocker", "main",
+                              "PersianBlockerTrackers-Domains.txt"),),
+           min_entries=17, min_bytes=1_000,  # 25 entries, 1,467 bytes on 2026-10-23
+           max_stale_days=30),
     # "light" rather than "pro": pro is ~217k domains and pushes geosite.dat
     # past what is comfortable to ship to a phone, for a false-positive rate
     # that is worse, not better.
     Source(key="ads-hagezi", name="HaGeZi Multi LIGHT", parser="domains",
            kind="domain", tier="blocklist", license="GPL-3.0", optional=True,
            homepage="https://github.com/hagezi/dns-blocklists",
-           url="https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/light-onlydomains.txt"),
-    Source(key="ads-adguard", name="AdGuard DNS filter", parser="adblock",
-           kind="domain", tier="blocklist", license="GPL-3.0", optional=True,
+           url=f"https://raw.githubusercontent.com/{HAGEZI}/main/wildcard/light-onlydomains.txt",
+           mirrors=_hagezi_mirrors("wildcard/light-onlydomains.txt"),
+           min_entries=49_000, min_bytes=1_000_000,  # 70,378 entries, 1.5 MB on 2026-10-23
+           max_stale_days=30),
+
+    # ---- domains: allowlists. Origin: maintainer (AdGuard's own exclusions
+    # and exceptions). Never blocked, only subtracted from the blocklists
+    # above: names AdGuard found to break real sites. Read by the adguard_allow
+    # parser, which takes ||name^ and @@||name^ rules and nothing else.
+    Source(key="allow-adguard-exclusions", name="AdGuard DNS filter exclusions",
+           parser="adguard_allow", kind="domain", tier="official",
+           license="GPL-3.0", optional=True,
            homepage="https://github.com/AdguardTeam/AdGuardSDNSFilter",
-           url="https://raw.githubusercontent.com/AdguardTeam/AdGuardSDNSFilter/gh-pages/Filters/filter.txt"),
+           url="https://raw.githubusercontent.com/AdguardTeam/AdGuardSDNSFilter/master/Filters/exclusions.txt",
+           min_entries=310, min_bytes=28_000,  # 454 entries, 41 KB on 2026-10-23
+           max_stale_days=30),
+    Source(key="allow-adguard-exceptions", name="AdGuard DNS filter exceptions",
+           parser="adguard_allow", kind="domain", tier="official",
+           license="GPL-3.0", optional=True,
+           homepage="https://github.com/AdguardTeam/AdGuardSDNSFilter",
+           url="https://raw.githubusercontent.com/AdguardTeam/AdGuardSDNSFilter/master/Filters/exceptions.txt",
+           min_entries=120, min_bytes=13_000,  # 174 entries, 19 KB on 2026-10-23
+           max_stale_days=30),
 
-    # ---- threat IPs, for firewall drop rules rather than DNS
-    # The phishing IP feed was Phishing.Database, which stopped updating on
-    # 2026-10-02 and carried Google, Cloudflare and CloudFront addresses. The
-    # `phishing` IP set stays, empty, so geoip:phishing still resolves.
-    Source(key="threat-ip-malware", name="Feodo Tracker botnet C2",
-           parser="cidr", kind="ip", tier="blocklist", license="CC0",
-           optional=True, homepage="https://feodotracker.abuse.ch/blocklist/",
-           url="https://feodotracker.abuse.ch/downloads/ipblocklist.txt"),
-
-    # ---- security
+    # ---- domains: security. Origin: maintainer, except CERT Polska (a
+    # national CERT, so authority). A stale threat feed is worth little: 7
+    # days.
     # URLhaus data is off limits: abuse.ch's terms (effective 2025-11-04)
     # restrict it to authenticated not-for-profit use and forbid derivative
     # works, and that carries into every mirror of it. HaGeZi's TIF mini is a
@@ -178,7 +437,10 @@ SOURCES: list[Source] = [
            parser="domains", kind="domain", tier="blocklist",
            license="GPL-3.0", optional=True,
            homepage="https://github.com/hagezi/dns-blocklists",
-           url="https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/tif.mini-onlydomains.txt"),
+           url=f"https://raw.githubusercontent.com/{HAGEZI}/main/wildcard/tif.mini-onlydomains.txt",
+           mirrors=_hagezi_mirrors("wildcard/tif.mini-onlydomains.txt"),
+           min_entries=140_000, min_bytes=2_700_000,  # 213,814 entries, 3.9 MB on 2026-10-23
+           max_stale_days=7),
     # Replaces Phishing.Database, which stopped updating on 2026-10-02 and
     # listed whole platforms (sites.google.com, bit.ly, nflxvideo.net). CERT
     # Polska's terms allow use "for any purpose, including commercial".
@@ -186,15 +448,37 @@ SOURCES: list[Source] = [
            parser="domains", kind="domain", tier="blocklist",
            license="free for any use", optional=True,
            homepage="https://cert.pl/en/warning-list/",
-           url="https://hole.cert.pl/domains/v2/domains.txt"),
+           url="https://hole.cert.pl/domains/v2/domains.txt",
+           min_entries=87_000, min_bytes=1_700_000,  # 125,273 entries, 2.6 MB on 2026-10-23
+           max_stale_days=7),
     Source(key="crypto-nocoin", name="NoCoin adblock list", parser="hosts",
            kind="domain", tier="blocklist", license="MIT", optional=True,
            homepage="https://github.com/hoshsadiq/adblock-nocoin-list",
-           url="https://raw.githubusercontent.com/hoshsadiq/adblock-nocoin-list/master/hosts.txt"),
+           url="https://raw.githubusercontent.com/hoshsadiq/adblock-nocoin-list/master/hosts.txt",
+           mirrors=(_jsdelivr("hoshsadiq", "adblock-nocoin-list", "master",
+                              "hosts.txt"),),
+           min_entries=210, min_bytes=5_700,  # 312 entries, 8,150 bytes on 2026-10-23
+           max_stale_days=7),
+
+    # ---- domains: adult content and gambling. Origin: maintainer
+    # (StevenBlack's unified hosts, two of its alternates).
     Source(key="nsfw-stevenblack", name="StevenBlack unified hosts (porn)",
            parser="hosts", kind="domain", tier="blocklist", license="MIT",
            optional=True, homepage="https://github.com/StevenBlack/hosts",
-           url="https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/porn-only/hosts"),
+           url="https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/porn-only/hosts",
+           mirrors=(_jsdelivr("StevenBlack", "hosts", "master",
+                              "alternates/porn-only/hosts"),),
+           min_entries=53_000, min_bytes=1_300_000,  # 76,798 entries, 2.0 MB on 2026-10-23
+           max_stale_days=30),
+    Source(key="nsfw-stevenblack-gambling",
+           name="StevenBlack unified hosts (gambling)",
+           parser="hosts", kind="domain", tier="blocklist", license="MIT",
+           optional=True, homepage="https://github.com/StevenBlack/hosts",
+           url="https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/gambling-only/hosts",
+           mirrors=(_jsdelivr("StevenBlack", "hosts", "master",
+                              "alternates/gambling-only/hosts"),),
+           min_entries=4_600, min_bytes=100_000,  # 6,712 entries, 149 KB on 2026-10-23
+           max_stale_days=30),
 ]
 
 BY_KEY = {s.key: s for s in SOURCES}
