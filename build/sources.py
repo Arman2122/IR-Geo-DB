@@ -415,6 +415,8 @@ SOURCES: list[Source] = [
            license="GPL-3.0", optional=True,
            homepage="https://github.com/AdguardTeam/AdGuardSDNSFilter",
            url="https://raw.githubusercontent.com/AdguardTeam/AdGuardSDNSFilter/master/Filters/exclusions.txt",
+           mirrors=(_jsdelivr("AdguardTeam", "AdGuardSDNSFilter", "master",
+                              "Filters/exclusions.txt"),),
            min_entries=310, min_bytes=28_000,  # 454 entries, 41 KB on 2026-10-23
            max_stale_days=30),
     Source(key="allow-adguard-exceptions", name="AdGuard DNS filter exceptions",
@@ -422,6 +424,8 @@ SOURCES: list[Source] = [
            license="GPL-3.0", optional=True,
            homepage="https://github.com/AdguardTeam/AdGuardSDNSFilter",
            url="https://raw.githubusercontent.com/AdguardTeam/AdGuardSDNSFilter/master/Filters/exceptions.txt",
+           mirrors=(_jsdelivr("AdguardTeam", "AdGuardSDNSFilter", "master",
+                              "Filters/exceptions.txt"),),
            min_entries=120, min_bytes=13_000,  # 174 entries, 19 KB on 2026-10-23
            max_stale_days=30),
 

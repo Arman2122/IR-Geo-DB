@@ -400,8 +400,7 @@ for key, path in (("ads-hagezi", "wildcard/light-onlydomains.txt"),
 GH_RAW = re.compile(r"^https://raw\.githubusercontent\.com/([^/]+)/([^/]+)/([^/]+)/(.+)$")
 for s in sources.SOURCES:
     m = GH_RAW.match(s.url)
-    if m and not s.key.startswith("allow-") and "hagezi" not in s.key \
-            and not s.key.startswith("xc-"):
+    if m and "hagezi" not in s.key and not s.key.startswith("xc-"):
         owner, repo, branch, path = m.groups()
         ok(f"https://cdn.jsdelivr.net/gh/{owner}/{repo}@{branch}/{path}" in s.mirrors,
            f"{s.key}: has the jsDelivr mirror of its GitHub-raw URL")
