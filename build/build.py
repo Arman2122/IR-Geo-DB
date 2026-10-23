@@ -15,17 +15,20 @@ import shutil
 import subprocess
 import sys
 import zipfile
+from bisect import bisect_right
 from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import bgp  # noqa: E402
 import emitters  # noqa: E402
 import fetch  # noqa: E402
 import geodat  # noqa: E402
 import sources  # noqa: E402
 from emitters import BuildContext  # noqa: E402
 from model import (DomainSet, IPSet, exclude_networks,  # noqa: E402
-                   make_domainset, make_ipset, parse_networks)
+                   make_domainset, make_ipset, parse_networks, psl_filter,
+                   public_suffixes, subtract_allowlist)
 
 PRIVATE_RANGES = [
     "0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8",
@@ -57,54 +60,238 @@ DOMAIN_ROLES = {
     "block-all": ("Combined blocklist — ads, malware, phishing, miners", "block"),
 }
 
+# The two Iranian ccTLDs, .ir and .ایران, each published as one suffix rule.
+IR_TLDS = ("ir", "xn--mgba3a4f16a")
+
+# Private-section PSL suffixes run by an Iranian operator, kept in `ir`
+# although the PSL filter drops every other shared-hosting suffix: a suffix
+# rule for one routes all of its customers' sites, which is right only when
+# the platform itself is Iranian. Seeded on 2026-10-23 from the `ir` names
+# that are PSL private rules after the .ir/.ایران collapse. The other five
+# are not Iranian: dyndns.org, selfip.com and sells-it.net (DynDNS.com),
+# ddnsguru.com (Dynu) and co.com (co.com Registry, CentralNic). A suffix
+# under .ir or .ایران, such as vistablog.ir, needs no entry: the TLD rule
+# already covers it.
+IR_PLATFORM_SUFFIXES = frozenset({
+    # Liara, an Iranian PaaS that serves apps as <app>.liara.run. The PSL
+    # entry reads "Liara : https://liara.ir", submitted from info@liara.ir.
+    "liara.run",
+})
+
+# Credits on each set: plain names a reader can follow. They are fixed, not
+# derived from what was harvested, because the day-over-day guard skips a set
+# whose credits changed, and a dropped source must not switch the guard off.
+RIR_CREDIT = ("RIR delegated statistics (RIPE NCC, APNIC, ARIN, LACNIC, "
+              "AFRINIC)")
+RIS_CREDIT = "RIPE NCC RIS routing data"
+
 
 def log(msg: str = "") -> None:
     print(msg, flush=True)
 
 
+def _collapse(nets) -> list:
+    """Collapsed and sorted, IPv4 first; the families may be mixed."""
+    nets = list(nets)
+    return [n for v in (4, 6) for n in sorted(ipaddress.collapse_addresses(
+        [x for x in nets if x.version == v]))]
+
+
+def _addresses(nets) -> int:
+    """IPv4 addresses in a collapsed list (IPv6 networks are ignored)."""
+    return sum(n.num_addresses for n in nets if n.version == 4)
+
+
+def _subtract(base: list, drop: list) -> tuple[list, int]:
+    """exclude_networks, with the base networks that touch nothing set aside.
+
+    exclude_networks tests every base network against every drop network:
+    the ~32,000 threat IPs against ~2,500 cloud ranges took half a minute.
+    A bisect over the collapsed drop list finds the few base networks that
+    touch one, and only those go through it. Returns the collapsed remainder
+    and the number of addresses removed.
+    """
+    drops = _collapse(drop)
+    index = {v: ([int(n.network_address) for n in drops if n.version == v],
+                 [int(n.broadcast_address) for n in drops if n.version == v])
+             for v in (4, 6)}
+    touching, clear = [], []
+    for n in base:
+        starts, ends = index[n.version]
+        # drops are disjoint and sorted, so only the last one starting at or
+        # before n's end can reach back into n
+        i = bisect_right(starts, int(n.broadcast_address)) - 1
+        if i >= 0 and ends[i] >= int(n.network_address):
+            touching.append(n)
+        else:
+            clear.append(n)
+    kept, removed = exclude_networks(touching, drops)
+    return _collapse(clear + kept), removed
+
+
+def _ris_routes(h: fetch.Harvest) -> list | None:
+    """The RIS routes, parsed once for both `ir` and `ir-cdn`.
+
+    None when there are none to use: then `ir` is registry-only and `ir-cdn`
+    the published lists only, and the build carries on (spec §3).
+    """
+    v4, v6 = h.get("ris-v4"), h.get("ris-v6")
+    if not v4 and not v6:
+        log("  warn: no RIS data — ir is registry-only, ir-cdn is the "
+            "published lists only")
+        return None
+    for key, values in (("ris-v4", v4), ("ris-v6", v6)):
+        if not values:
+            log(f"  warn: no {key} data — that family is not BGP-adjusted")
+    try:
+        return bgp.routes_from(v4 + v6)
+    except ValueError as exc:
+        # only a corrupted stored copy gets here: the parser validated it
+        log(f"  warn: unreadable RIS data ({exc}) — ir is registry-only, "
+            f"ir-cdn is the published lists only")
+        return None
+
+
+def _ris_generated(h: fetch.Harvest) -> str:
+    """When the RIS dump was made: its Last-Modified, else when it was read."""
+    out = h.outcomes.get("ris-v4")
+    if out is None:
+        return ""
+    return out.last_modified or out.fetched_at
+
+
+def _bgp_adjust(h: fetch.Harvest, reg_v4: list, reg_v6: list,
+                ir_asns: set[int], routes: list | None
+                ) -> tuple[list, list, dict]:
+    """Registry IR → BGP add/remove → anomaly limits (spec §3).
+
+    Raises bgp.BGPAnomaly when the change is beyond the limits: a leak or a
+    broken dump, which must fail the build rather than publish.
+    """
+    report = {"applied": False, "ir_asns": 0,
+              "ris_generated": _ris_generated(h), "registry_addresses": 0,
+              "added_prefixes": 0, "added_addresses": 0,
+              "removed_prefixes": 0, "removed_addresses": 0}
+    if routes is None:
+        return reg_v4, reg_v6, report
+
+    adj = bgp.adjust(reg_v4 + reg_v6, routes, ir_asns)
+    bgp.check_limits(adj)
+    # IPv4 only, like the address counts, so each prefix count pairs with
+    # its address count
+    added4 = sum(1 for n in adj.added if n.version == 4)
+    removed4 = sum(1 for n in adj.removed if n.version == 4)
+    report.update(applied=True, ir_asns=len(ir_asns),
+                  registry_addresses=adj.registry_addresses,
+                  added_prefixes=added4, added_addresses=adj.added_addresses,
+                  removed_prefixes=removed4,
+                  removed_addresses=adj.removed_addresses)
+    log(f"  BGP adjustment ({len(ir_asns)} IR ASNs, {len(routes)} RIS routes): "
+        f"+{added4} IPv4 prefixes (+{adj.added_addresses} addresses), "
+        f"-{removed4} (-{adj.removed_addresses} addresses) on "
+        f"{adj.registry_addresses} registry IPv4 addresses; IPv6 "
+        f"+{len(adj.added) - added4} / -{len(adj.removed) - removed4} prefixes")
+    return ([n for n in adj.networks if n.version == 4],
+            [n for n in adj.networks if n.version == 6], report)
+
+
+def _provider_networks(h: fetch.Harvest, routes: list | None,
+                       private: list) -> tuple[IPSet, dict]:
+    """`ir-cdn`: every provider's published lists plus what its ASNs announce.
+
+    The ASNs are the ones RIPE holds for each provider organisation. Bogons
+    are removed (Derak publishes a 192.168.x range); foreign clouds are not,
+    because ParsPack's real edges sit on Vultr (spec §4). Kept out of `ir`:
+    the published lists include edge nodes that are not in Iran.
+    """
+    report, everything, bad = {}, [], 0
+    for name, info in sources.PROVIDERS.items():
+        asns: set[int] = set()
+        for org in info["orgs"]:
+            asns |= bgp.asns_from(h.get(f"ripe-org-{org.lower()}"))
+        announced = bgp.announced_by(routes, asns) if routes and asns else []
+        list4, list6, n_bad = parse_networks(
+            [v for key in info["lists"] for v in h.get(key)])
+        bad += n_bad
+        own, _ = _subtract(announced + list4 + list6, private)
+        everything += own
+        report[name] = {"asns": sorted(asns),
+                        "network_addresses": _addresses(announced),
+                        "list_addresses": _addresses(list4),
+                        "addresses": _addresses(own)}
+        log(f"  {name:<12} {len(asns)} ASNs: {_addresses(announced)} IPv4 "
+            f"addresses announced, {_addresses(list4)} listed, "
+            f"{_addresses(own)} in all")
+    nets = _collapse(everything)
+    cdn = IPSet(slug="ir-cdn", title=IP_ROLES["ir-cdn"][0],
+                v4=[n for n in nets if n.version == 4],
+                v6=[n for n in nets if n.version == 6],
+                sources=list(sources.PROVIDERS) + [RIS_CREDIT], malformed=bad)
+    return cdn, report
+
+
 def build_ip_sets(h: fetch.Harvest, strict_exclude: bool) -> tuple[dict, dict]:
     audit: dict = {}
 
+    # The RIR parser emits "AS<n>" tokens beside the prefixes: the ASNs feed
+    # the BGP adjustment and must not reach parse_networks as malformed.
     registry_raw = h.any_of("rir-")
-    reg_v4, reg_v6, reg_bad = parse_networks(registry_raw)
-    log(f"  registry IR: {len(reg_v4)} IPv4 + {len(reg_v6)} IPv6 prefixes "
-        f"({len(registry_raw)} raw records, {reg_bad} malformed)")
+    prefixes = [v for v in registry_raw if not v.startswith("AS")]
+    ir_asns = bgp.asns_from(registry_raw)
+    reg_v4, reg_v6, reg_bad = parse_networks(prefixes)
+    log(f"  registry IR: {len(reg_v4)} IPv4 + {len(reg_v6)} IPv6 prefixes, "
+        f"{len(ir_asns)} ASNs ({len(prefixes)} raw prefix records, "
+        f"{reg_bad} malformed)")
+
+    routes = _ris_routes(h)
+    ir_v4, ir_v6, audit["bgp"] = _bgp_adjust(h, reg_v4, reg_v6, ir_asns,
+                                             routes)
 
     cloud_v4, cloud_v6, _ = parse_networks(h.any_of("cloud-"))
     cloud = cloud_v4 + cloud_v6
 
-    clean_v4, dropped4 = exclude_networks(reg_v4, cloud)
-    clean_v6, dropped6 = exclude_networks(reg_v6, cloud)
+    clean_v4, dropped4 = exclude_networks(ir_v4, cloud)
+    clean_v6, dropped6 = exclude_networks(ir_v6, cloud)
     audit["foreign_cloud_overlap_addresses"] = dropped4 + dropped6
     audit["foreign_cloud_prefixes_known"] = len(cloud)
     audit["foreign_cloud_excluded"] = bool(strict_exclude)
 
     if strict_exclude:
-        reg_v4, reg_v6 = clean_v4, clean_v6
+        ir_v4, ir_v6 = clean_v4, clean_v6
         log(f"  foreign-cloud exclusion: {dropped4 + dropped6} addresses removed")
     else:
         log(f"  foreign-cloud overlap (reported, not removed): "
             f"{dropped4 + dropped6} addresses")
 
-    ir = IPSet(slug="ir", title=IP_ROLES["ir"][0], v4=reg_v4, v6=reg_v6,
-               sources=["RIR delegated statistics (RIPE NCC, APNIC, ARIN, "
-                        "LACNIC, AFRINIC)"], malformed=reg_bad)
+    ir = IPSet(slug="ir", title=IP_ROLES["ir"][0], v4=_collapse(ir_v4),
+               v6=_collapse(ir_v6), sources=[RIR_CREDIT, RIS_CREDIT],
+               malformed=reg_bad)
 
-    # Kept out of `ir`: these published lists include edge nodes that are not
-    # in Iran (ParsPack ships Leaseweb and Vultr ranges).
-    cdn = make_ipset("ir-cdn", IP_ROLES["ir-cdn"][0],
-                     h.get("arvancloud") + h.get("parspack"),
-                     ["ArvanCloud", "ParsPack"])
+    private_nets = [ipaddress.ip_network(p) for p in PRIVATE_RANGES]
+    cdn, audit["providers"] = _provider_networks(h, routes, private_nets)
 
     full = make_ipset("ir-full", IP_ROLES["ir-full"][0],
                       [str(n) for n in ir.all_networks() + cdn.all_networks()],
-                      ir.sources + cdn.sources)
+                      list(dict.fromkeys(ir.sources + cdn.sources)))
 
     private = make_ipset("private", IP_ROLES["private"][0], PRIVATE_RANGES,
                          ["RFC 1918 / 5735 / 6598 / 4193"])
-    malware_ip = make_ipset("malware", IP_ROLES["malware"][0],
-                            h.get("threat-ip-malware"),
-                            ["Feodo Tracker / abuse.ch (CC0)"])
+
+    # Safety subtraction (spec §6.3): a threat feed that lists a bogon, a
+    # cloud range or an Iranian provider's edge would block far more than
+    # one bad host.
+    t4, t6, t_bad = parse_networks(h.get("threat-ip-malware") +
+                                   h.get("threat-ip-hagezi"))
+    guard = private_nets + cloud + cdn.all_networks()
+    t4, removed4 = _subtract(t4, guard)
+    t6, _ = _subtract(t6, guard)
+    audit["threat_ip_removed"] = removed4
+    log(f"  threat IPs: {len(t4)} IPv4 + {len(t6)} IPv6 after removing "
+        f"{removed4} IPv4 addresses (bogons, clouds, ir-cdn)")
+    malware_ip = IPSet(slug="malware", title=IP_ROLES["malware"][0], v4=t4,
+                       v6=t6, malformed=t_bad,
+                       sources=["Feodo Tracker / abuse.ch (CC0)",
+                                "HaGeZi Threat Intelligence Feeds (GPL-3.0)"])
     # no vetted phishing IP feed yet; kept so geoip:phishing still resolves
     phishing_ip = make_ipset("phishing", IP_ROLES["phishing"][0], [], [])
 
@@ -133,22 +320,71 @@ def build_ip_sets(h: fetch.Harvest, strict_exclude: bool) -> tuple[dict, dict]:
              "malware": malware_ip, "phishing": phishing_ip}, audit)
 
 
-def build_domain_sets(h: fetch.Harvest) -> dict[str, DomainSet]:
+def _ir_domains(h: fetch.Harvest, psl_rules: list[str]
+                ) -> tuple[DomainSet, int | None]:
+    """`ir`: bootmortis ∪ v2fly CATEGORY-IR, both ccTLDs, PSL-filtered.
+
+    The PSL filter runs after the ccTLD collapse, so a name under .ir is not
+    counted (the `ir` rule covers it either way), and before pruning, which
+    would otherwise drop foo.dyndns.org as covered by dyndns.org just before
+    the filter removes dyndns.org. Hence two passes: collapse without
+    pruning, filter the suffixes, then build again with pruning. Exact-match
+    names are left alone; the filter is about suffix rules.
+    """
+    title = DOMAIN_ROLES["ir"][0]
+    credits = ["Iran Hosted Domains (MIT)", "v2fly domain-list-community (MIT)"]
+    suffix, full = [], []
+    for value in h.get("ir-domains") + h.get("ir-v2fly"):
+        if value.startswith("full:"):
+            full.append(value[len("full:"):])
+        else:
+            suffix.append(value)
+    raw = make_domainset("ir", title, suffix=suffix, full=full,
+                         sources=credits, collapse_tld=IR_TLDS, prune=False)
+    if psl_rules:
+        kept, removed = psl_filter(raw.suffix, psl_rules,
+                                   keep=IR_PLATFORM_SUFFIXES)
+    else:
+        log("  warn: no Public Suffix List — ir is published without the "
+            "PSL filter")
+        kept, removed = raw.suffix, None
+    ds = make_domainset("ir", title, suffix=kept, full=raw.full,
+                        sources=credits, collapse_tld=IR_TLDS)
+    ds.malformed = raw.malformed
+    return ds, removed
+
+
+def build_domain_sets(h: fetch.Harvest) -> tuple[dict[str, DomainSet], dict]:
     out: dict[str, DomainSet] = {}
+    psl_rules = h.get("psl")
 
-    out["ir"] = make_domainset(
-        "ir", DOMAIN_ROLES["ir"][0], suffix=h.get("ir-domains"),
-        sources=["Iran Hosted Domains (MIT)"], collapse_tld="ir")
+    out["ir"], psl_removed = _ir_domains(h, psl_rules)
 
-    out["ads-ir"] = make_domainset(
-        "ads-ir", DOMAIN_ROLES["ads-ir"][0], suffix=h.get("ads-persian"),
-        sources=["PersianBlocker (AGPL-3.0)"])
-
-    out["ads"] = make_domainset(
-        "ads", DOMAIN_ROLES["ads"][0],
-        suffix=h.get("ads-persian") + h.get("ads-hagezi") + h.get("ads-adguard"),
-        sources=["PersianBlocker (AGPL-3.0)", "HaGeZi Multi LIGHT (GPL-3.0)",
-                 "AdGuard DNS filter (GPL-3.0)"])
+    # AdGuard's own allowlists: names it found to break real sites when
+    # blocked. An entry that is a single label or a public suffix is ignored
+    # (spec §5); without the PSL only single labels are.
+    allow = (set(h.get("allow-adguard-exclusions")) |
+             set(h.get("allow-adguard-exceptions")))
+    suffixes = public_suffixes(psl_rules)
+    persian = (h.get("ads-persian-hosts") + h.get("ads-persian-ads") +
+               h.get("ads-persian-trackers"))
+    allow_removed = {}
+    for slug, names, credits in (
+            ("ads-ir", persian, ["PersianBlocker (AGPL-3.0)"]),
+            ("ads", persian + h.get("ads-hagezi"),
+             ["PersianBlocker (AGPL-3.0)", "HaGeZi Multi LIGHT (GPL-3.0)"])):
+        kept, allow_removed[slug] = subtract_allowlist(set(names), allow,
+                                                       suffixes)
+        out[slug] = make_domainset(slug, DOMAIN_ROLES[slug][0], suffix=kept,
+                                   sources=credits)
+    daudit = {"psl_removed": psl_removed,
+              "allowlist_removed": {"ads": allow_removed["ads"],
+                                    "ads-ir": allow_removed["ads-ir"]}}
+    if psl_removed is not None:
+        log(f"  PSL filter: {psl_removed} shared-hosting suffixes removed "
+            f"from ir")
+    log(f"  AdGuard allowlist: {allow_removed['ads']} names removed from ads, "
+        f"{allow_removed['ads-ir']} from ads-ir")
 
     out["malware"] = make_domainset(
         "malware", DOMAIN_ROLES["malware"][0],
@@ -164,7 +400,8 @@ def build_domain_sets(h: fetch.Harvest) -> dict[str, DomainSet]:
         suffix=h.get("crypto-nocoin"), sources=["NoCoin adblock list (MIT)"])
 
     out["nsfw"] = make_domainset(
-        "nsfw", DOMAIN_ROLES["nsfw"][0], suffix=h.get("nsfw-stevenblack"),
+        "nsfw", DOMAIN_ROLES["nsfw"][0],
+        suffix=h.get("nsfw-stevenblack") + h.get("nsfw-stevenblack-gambling"),
         sources=["StevenBlack unified hosts (MIT)"])
 
     combined, combined_sources = [], []
@@ -179,7 +416,7 @@ def build_domain_sets(h: fetch.Harvest) -> dict[str, DomainSet]:
         log(f"  {slug:<14} suffix={len(ds.suffix):<7} full={len(ds.full):<5} "
             f"keyword={len(ds.keyword):<4} regex={len(ds.regex):<4} "
             f"pruned={ds.pruned}")
-    return out
+    return out, daudit
 
 
 def build_dat_files(ctx: BuildContext, ips: dict, doms: dict) -> None:
@@ -399,6 +636,19 @@ def write_configs(ctx: BuildContext, base_url: str) -> None:
                          "RouterOS self-updating installer", 1, [])
 
 
+def source_provenance(h: fetch.Harvest) -> dict:
+    """Per source, in registry order: how it was acquired, and its terms."""
+    order = {s.key: i for i, s in enumerate(sources.SOURCES)}
+    out = {}
+    for key in sorted(h.outcomes, key=lambda k: order.get(k, len(order))):
+        src = sources.BY_KEY.get(key)
+        out[key] = h.outcomes[key].report() | {
+            "license": src.license if src else "",
+            "homepage": src.homepage if src else "",
+            "attribution": src.attribution if src else ""}
+    return out
+
+
 def write_metadata(ctx: BuildContext, ips: dict, doms: dict, h: fetch.Harvest,
                    audit: dict) -> dict:
     stats = {
@@ -406,8 +656,10 @@ def write_metadata(ctx: BuildContext, ips: dict, doms: dict, h: fetch.Harvest,
         "generated": ctx.timestamp,
         "ip_sets": {k: v.stats() for k, v in ips.items()},
         "domain_sets": {k: v.stats() for k, v in doms.items()},
+        # kept for anything that read them before `sources` existed
         "sources_ok": sorted(h.values),
         "sources_failed": h.failed,
+        "sources": source_provenance(h),
         "audit": audit,
     }
     emitters.write_json(ctx, "stats.json", stats, 0)
@@ -572,6 +824,9 @@ def main() -> None:
     ap.add_argument("--no-strict-exclude", dest="strict_exclude",
                     action="store_false")
     ap.add_argument("--skip-package", action="store_true")
+    ap.add_argument("--allow-shrink", action="store_true",
+                    help="publish even if a set shrank past its day-over-day "
+                         "limit, once a human has reviewed the change")
     args = ap.parse_args()
 
     now = datetime.now(timezone.utc)
@@ -596,10 +851,15 @@ def main() -> None:
         sys.exit(f"ERROR: {exc}")
 
     log("\n[2/7] building IP datasets")
-    ips, audit = build_ip_sets(h, args.strict_exclude)
+    try:
+        ips, audit = build_ip_sets(h, args.strict_exclude)
+    except bgp.BGPAnomaly as exc:
+        # a leak or a broken dump: yesterday's release stays up
+        sys.exit(f"ERROR: {exc}")
 
     log("\n[3/7] building domain datasets")
-    doms = build_domain_sets(h)
+    doms, daudit = build_domain_sets(h)
+    audit.update(daudit)
 
     log("\n[4/7] sanity checks")
     sanity_check(ips, doms)

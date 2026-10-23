@@ -1,0 +1,327 @@
+#!/usr/bin/env python3
+"""Offline tests for build.py: how the harvested sources become the sets.
+
+    python3 build/test_build.py
+
+A Harvest is built by hand from small synthetic values for every source key,
+so no network is touched. The registry block is 10.0.0.0/16, large enough
+that the synthetic BGP changes stay well inside the anomaly limits.
+"""
+
+from __future__ import annotations
+
+import ipaddress
+import json
+import os
+import sys
+import tempfile
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from testkit import done, eq, ok  # noqa: E402
+
+import bgp  # noqa: E402
+import build  # noqa: E402
+import fetch  # noqa: E402
+import sources  # noqa: E402
+from emitters import BuildContext  # noqa: E402
+
+
+def net(s: str):
+    return ipaddress.ip_network(s)
+
+
+def strs(networks) -> list[str]:
+    return [str(n) for n in networks]
+
+
+def overlaps(networks, cidr: str) -> bool:
+    target = net(cidr)
+    return any(n.version == target.version and n.overlaps(target)
+               for n in networks)
+
+
+VALUES = {
+    # Registry: one IPv4 and one IPv6 block, plus the ASN tokens the RIR
+    # parser emits beside them. The tokens must never reach parse_networks.
+    "rir-ripencc": ["10.0.0.0/16", "2001:db8::/32", "AS58224", "AS44244"],
+    "rir-apnic": [],
+    "ris-v4": [
+        "58224 10.0.0.0/16",        # the registry block, announced from Iran
+        "64500 10.0.2.0/24",        # foreign more-specific inside it: removed
+        "58224 20.0.0.0/24",        # Iranian origin outside the registry: added
+        "44244 104.16.5.0/24",      # added by BGP, but inside Cloudflare
+        "13335 104.16.0.0/13",      # Cloudflare's own announcement
+        "202468 185.166.104.0/24",  # ArvanCloud (ORG-NAAP1-RIPE)
+        "202468 185.143.232.0/24",  # ArvanCloud, inside its published list
+        "202319 5.34.192.0/22",     # Sotoon (ORG-HUCC1-RIPE)
+    ],
+    "ris-v6": ["58224 2001:db8::/32", "202468 2a0e:97c0::/32"],
+    "ripe-org-org-naap1-ripe": ["AS202468"],
+    "ripe-org-org-naac1-ripe": ["AS205585"],
+    "ripe-org-org-hucc1-ripe": ["AS202319"],
+    "ripe-org-org-endc1-ripe": ["AS60423"],
+    "ripe-org-org-gwsn7-ripe": ["AS61173"],
+    "arvancloud": ["185.143.232.0/22"],
+    "parspack": ["104.16.8.0/24"],               # a Cloudflare edge, kept
+    "derak-v4": ["192.168.204.48/28", "185.204.168.0/22"],  # one bogon
+    "derak-v6": ["2a0e:1d80::/32"],
+    "iranserver": ["185.4.28.10/32"],
+    "mizbancloud": ["2.57.36.0/24"],
+    "xc-ipverse-v4": ["10.0.0.0/16"],
+    "xc-ipverse-v6": ["2001:db8::/32"],
+    "xc-ipdeny-v4": ["10.0.0.0/16"],
+    "cloud-cloudflare-v4": ["104.16.0.0/13"],
+    "cloud-cloudflare-v6": ["2606:4700::/32"],
+    "cloud-aws": ["52.94.4.0/22"],
+    "threat-ip-malware": ["45.9.9.9/32", "10.1.1.1/32"],
+    "threat-ip-hagezi": ["104.16.1.1/32", "185.166.104.5/32", "46.1.2.3/32",
+                         "52.94.0.0/21",   # its upper half is AWS
+                         "2606:4700::1111/128", "fd00::1/128",
+                         "2a01:4f8::1/128"],
+    "ir-domains": ["digikala.com", "dyndns.org", "foo.dyndns.org", "co.com",
+                   "liara.run", "shop.ir", "news.xn--mgba3a4f16a",
+                   "vistablog.ir"],
+    "ir-v2fly": ["aparat.com", "ir", "full:exact.example.com",
+                 "full:dyndns.org"],
+    "psl": ["com", "org", "ir", "run", "io", "private:dyndns.org",
+            "private:co.com", "private:liara.run", "private:github.io",
+            "private:vistablog.ir"],
+    "ads-persian-hosts": ["persian-ads.example", "allowed.example"],
+    "ads-persian-ads": ["ads.persian.example"],
+    "ads-persian-trackers": ["tracker.persian.example"],
+    "ads-hagezi": ["hagezi-ads.example", "sub.allowed.example",
+                   "cdn.excepted.example", "x.github.io",
+                   "persian-ads.example"],
+    "allow-adguard-exclusions": ["allowed.example", "github.io", "com"],
+    "allow-adguard-exceptions": ["excepted.example"],
+    "malware-hagezi-tif": ["bad.example"],
+    "phishing-certpl": ["phish.example"],
+    "crypto-nocoin": ["miner.example"],
+    "nsfw-stevenblack": ["porn.example"],
+    "nsfw-stevenblack-gambling": ["casino.example"],
+}
+
+
+def harvest(outcomes=None, **changes) -> fetch.Harvest:
+    """The synthetic harvest; a key set to None is left out entirely."""
+    values = {k: list(v) for k, v in VALUES.items()}
+    for key, val in changes.items():
+        key = key.replace("_", "-")
+        if val is None:
+            values.pop(key, None)
+        else:
+            values[key] = val
+    return fetch.Harvest(values=values, outcomes=outcomes or {})
+
+
+def raises(fn, exc):
+    try:
+        fn()
+    except exc as e:
+        return str(e) or "<raised>"
+    return None
+
+
+# ---------------------------------------------------------------- IP sets
+
+h = harvest()
+ips, audit = build.build_ip_sets(h, True)
+ir = ips["ir"]
+
+# the brief's assertions
+ok(ipaddress.ip_network("20.0.0.0/24") in ips["ir"].v4, "BGP addition reaches ir")
+ok(not any(n.overlaps(ipaddress.ip_network("10.0.2.0/24")) for n in ips["ir"].v4),
+   "BGP removal reaches ir")
+ok(any(n.overlaps(ipaddress.ip_network("185.166.104.0/24")) for n in ips["ir-cdn"].v4),
+   "provider ASN prefix in ir-cdn")
+ok(not any(n.overlaps(ipaddress.ip_network("192.168.204.48/28")) for n in ips["ir-cdn"].v4),
+   "bogon dropped from ir-cdn")
+ok(not any(n.overlaps(ipaddress.ip_network("104.16.0.0/13")) for n in ips["malware"].v4),
+   "cloud range removed from threat IPs")
+
+eq(ir.malformed, 0, "ASN tokens never reach parse_networks")
+eq(strs(ir.v4), ["10.0.0.0/23", "10.0.3.0/24", "10.0.4.0/22", "10.0.8.0/21",
+                 "10.0.16.0/20", "10.0.32.0/19", "10.0.64.0/18",
+                 "10.0.128.0/17", "20.0.0.0/24"],
+   "ir = registry - foreign more-specific + Iranian announcement")
+eq(strs(ir.v6), ["2001:db8::/32"], "IPv6 registry block kept")
+ok(not overlaps(ir.v4, "104.16.5.0/24"),
+   "cloud guard runs after BGP: an addition inside Cloudflare is removed")
+eq(audit["foreign_cloud_overlap_addresses"], 256,
+   "cloud guard counts the BGP addition it removed")
+eq(audit["bgp"], {"applied": True, "ir_asns": 2, "ris_generated": "",
+                  "registry_addresses": 65536, "added_prefixes": 2,
+                  "added_addresses": 512, "removed_prefixes": 1,
+                  "removed_addresses": 256},
+   "audit.bgp shape and IPv4 counts")
+eq(audit["ir_ipv4_addresses"], 65536, "ir_ipv4_addresses is after adjustment")
+eq(ir.sources, ["RIR delegated statistics (RIPE NCC, APNIC, ARIN, LACNIC, "
+                "AFRINIC)", "RIPE NCC RIS routing data"], "ir credits")
+
+# providers
+eq(set(audit["providers"]), set(sources.PROVIDERS), "one audit entry per provider")
+eq(audit["providers"]["ArvanCloud"],
+   {"asns": [202468, 205585], "network_addresses": 512,
+    "list_addresses": 1024, "addresses": 1280},
+   "audit.providers shape: networks, list and their union")
+eq(audit["providers"]["Derak"],
+   {"asns": [60423], "network_addresses": 0, "list_addresses": 1040,
+    "addresses": 1024}, "a provider's bogon is counted in its list, not its total")
+eq(audit["providers"]["Sotoon"]["addresses"], 1024,
+   "a provider with no list gets its announced networks")
+eq(audit["providers"]["ParsPack"]["asns"], [], "a provider with no org has no ASNs")
+cdn = ips["ir-cdn"]
+ok(overlaps(cdn.v4, "5.34.192.0/22"), "Sotoon's announced prefix in ir-cdn")
+ok(overlaps(cdn.v4, "104.16.8.0/24"), "no cloud subtraction from ir-cdn")
+ok(overlaps(cdn.v6, "2a0e:97c0::/32"), "IPv6 provider announcement in ir-cdn")
+ok(overlaps(cdn.v6, "2a0e:1d80::/32"), "IPv6 provider list in ir-cdn")
+ok(not overlaps(cdn.v4, "20.0.0.0/24"), "an Iranian ASN is not a provider ASN")
+eq(len(cdn.v4), len(set(cdn.v4)), "ir-cdn collapsed")
+eq(cdn.sources, ["ArvanCloud", "Sotoon", "Derak", "IranServer", "MizbanCloud",
+                 "ParsPack", "RIPE NCC RIS routing data"], "ir-cdn credits")
+eq(ips["ir-full"].sources, ir.sources + cdn.sources[:-1],
+   "ir-full credits each source once")
+
+# threat IPs
+mal = ips["malware"]
+eq(strs(mal.v4), ["45.9.9.9/32", "46.1.2.3/32", "52.94.0.0/22"],
+   "malware IPs: bogon, cloud and ir-cdn addresses subtracted; a range "
+   "partly in a cloud keeps the rest")
+eq(strs(mal.v6), ["2a01:4f8::1/128"], "IPv6 bogon and cloud subtracted too")
+eq(audit["threat_ip_removed"], 3 + 1024,
+   "threat_ip_removed counts IPv4 addresses")
+eq(mal.sources, ["Feodo Tracker / abuse.ch (CC0)",
+                 "HaGeZi Threat Intelligence Feeds (GPL-3.0)"], "malware credits")
+eq((ips["phishing"].total, ips["phishing"].sources), (0, []),
+   "phishing IP set stays empty")
+eq(set(ips), {"ir", "ir-cdn", "ir-full", "private", "malware", "phishing"},
+   "same IP set keys as before")
+ok("crosscheck_ipverse" in audit and "crosscheck_ipdeny" in audit,
+   "cross-checks still run")
+
+# RIS timestamp (Ruling R6)
+when = "Fri, 23 Oct 2026 06:00:00 GMT"
+_, a = build.build_ip_sets(harvest(outcomes={"ris-v4": fetch.Outcome(
+    key="ris-v4", status="fresh", last_modified=when,
+    fetched_at="2026-10-23T09:00:00Z")}), True)
+eq(a["bgp"]["ris_generated"], when, "ris_generated is the dump's Last-Modified")
+_, a = build.build_ip_sets(harvest(outcomes={"ris-v4": fetch.Outcome(
+    key="ris-v4", status="stale", fetched_at="2026-10-23T09:00:00Z")}), True)
+eq(a["bgp"]["ris_generated"], "2026-10-23T09:00:00Z",
+   "ris_generated falls back to fetched_at")
+
+# BGP unavailable: registry-only, never a failure
+NOT_APPLIED = {"applied": False, "ir_asns": 0, "ris_generated": "",
+               "registry_addresses": 0, "added_prefixes": 0,
+               "added_addresses": 0, "removed_prefixes": 0,
+               "removed_addresses": 0}
+ips2, a2 = build.build_ip_sets(harvest(ris_v4=None, ris_v6=None), True)
+eq(a2["bgp"], NOT_APPLIED, "no RIS data: BGP not applied, counts 0")
+eq(strs(ips2["ir"].v4), ["10.0.0.0/16"], "no RIS data: ir is registry-only")
+ok(not overlaps(ips2["ir-cdn"].v4, "185.166.104.0/24"),
+   "no RIS data: ir-cdn is the published lists only")
+ok(overlaps(ips2["ir-cdn"].v4, "185.143.232.0/22"),
+   "no RIS data: published lists still in ir-cdn")
+eq(a2["providers"]["ArvanCloud"]["network_addresses"], 0,
+   "no RIS data: no provider network addresses")
+eq(ips2["ir"].sources, ir.sources,
+   "credits do not change with what was harvested (the shrink guard needs that)")
+
+ips3, a3 = build.build_ip_sets(harvest(ris_v4=["garbage"]), True)
+eq(a3["bgp"], NOT_APPLIED, "routes_from raising: BGP not applied")
+eq(strs(ips3["ir"].v4), ["10.0.0.0/16"], "routes_from raising: registry-only ir")
+
+msg = raises(lambda: build.build_ip_sets(
+    harvest(ris_v4=["58224 30.0.0.0/8"], ris_v6=[]), True), bgp.BGPAnomaly)
+ok(msg and "add" in msg, f"an over-limit addition raises BGPAnomaly ({msg})")
+
+ips4, a4 = build.build_ip_sets(harvest(), False)
+ok(overlaps(ips4["ir"].v4, "104.16.5.0/24"),
+   "--no-strict-exclude reports the cloud overlap without removing it")
+eq(a4["foreign_cloud_excluded"], False, "audit records the cloud guard was off")
+
+# ------------------------------------------------------------- domain sets
+
+doms, daudit = build.build_domain_sets(h)
+# the brief's assertions
+ok("dyndns.org" not in doms["ir"].suffix and "xn--mgba3a4f16a" in doms["ir"].suffix,
+   "ir domain filters")
+ok("aparat.com" in doms["ir"].suffix, "v2fly CATEGORY-IR merged")
+ok("allowed.example" not in doms["ads"].suffix, "AdGuard allowlist applied")
+ok("casino.example" in doms["nsfw"].suffix, "gambling merged into nsfw")
+
+d = doms["ir"]
+eq(sorted(d.suffix), ["aparat.com", "digikala.com", "foo.dyndns.org", "ir",
+                      "liara.run", "xn--mgba3a4f16a"],
+   "ir suffixes: both ccTLDs collapsed, PSL suffixes gone, hosts under them kept")
+ok("foo.dyndns.org" in d.suffix,
+   "a host under a removed PSL suffix is kept (filter runs before pruning)")
+ok("liara.run" in d.suffix and "liara.run" in build.IR_PLATFORM_SUFFIXES,
+   "an Iranian platform suffix survives the PSL filter")
+eq(sorted(d.full), ["dyndns.org", "exact.example.com"],
+   "full: v2fly values land in full; the PSL filter leaves exact names alone")
+ok("vistablog.ir" not in d.suffix,
+   "a PSL suffix under .ir is covered by the ir rule, not filtered")
+eq(daudit, {"psl_removed": 2, "allowlist_removed": {"ads": 3, "ads-ir": 1}},
+   "domain audit counts")
+eq(d.sources, ["Iran Hosted Domains (MIT)",
+               "v2fly domain-list-community (MIT)"], "ir domain credits")
+
+eq(sorted(doms["ads-ir"].suffix),
+   ["ads.persian.example", "persian-ads.example", "tracker.persian.example"],
+   "ads-ir: the three PersianBlocker lists, allowlist applied")
+eq(sorted(doms["ads"].suffix),
+   ["ads.persian.example", "hagezi-ads.example", "persian-ads.example",
+    "tracker.persian.example", "x.github.io"],
+   "ads: PersianBlocker + HaGeZi; a public-suffix allow entry is ignored")
+eq(doms["ads"].sources, ["PersianBlocker (AGPL-3.0)",
+                         "HaGeZi Multi LIGHT (GPL-3.0)"], "ads credits")
+eq(sorted(doms["nsfw"].suffix), ["casino.example", "porn.example"],
+   "nsfw: porn + gambling")
+ok("allowed.example" not in doms["block-all"].suffix
+   and "bad.example" in doms["block-all"].suffix,
+   "block-all is built from the filtered sets")
+eq((sorted(doms["malware"].suffix), sorted(doms["phishing"].suffix),
+    sorted(doms["cryptominers"].suffix)),
+   (["bad.example"], ["phish.example"], ["miner.example"]),
+   "security sets keep their keys")
+
+doms2, daudit2 = build.build_domain_sets(harvest(psl=None))
+eq(daudit2["psl_removed"], None, "no PSL: psl_removed is None")
+ok("dyndns.org" in doms2["ir"].suffix, "no PSL: the filter is skipped")
+
+# ---------------------------------------------------------------- metadata
+
+outcomes = {
+    "psl": fetch.Outcome(key="psl", status="fresh", served_by="primary",
+                         values=["com"], sha256="ab"),
+    "ris-v4": fetch.Outcome(key="ris-v4", status="stale", served_by="state",
+                            values=["1 1.0.0.0/24"], stale_days=2.0,
+                            error="primary: HTTP 503"),
+    "rir-ripencc": fetch.Outcome(key="rir-ripencc", status="fresh",
+                                 served_by="primary", values=["10.0.0.0/16"]),
+}
+hm = harvest(outcomes=outcomes)
+with tempfile.TemporaryDirectory() as tmp:
+    ctx = BuildContext(outdir=tmp, timestamp="2026-10-23 00:00:00 UTC",
+                       version="v2026.10.23")
+    stats = build.write_metadata(ctx, ips, doms, hm, audit)
+    with open(os.path.join(tmp, "stats.json"), encoding="utf-8") as fh:
+        on_disk = json.load(fh)
+src = stats["sources"]
+eq(list(src), ["rir-ripencc", "ris-v4", "psl"], "sources in registry order")
+eq((src["psl"]["license"], src["psl"]["homepage"]),
+   ("MPL-2.0", "https://publicsuffix.org"),
+   "license and homepage from the registry")
+eq(src["ris-v4"]["attribution"], "Contains RIPE NCC RIS data © RIPE NCC",
+   "RIPE attribution carried")
+eq((src["ris-v4"]["status"], src["ris-v4"]["served_by"],
+    src["ris-v4"]["stale_days"], src["ris-v4"]["entries"]),
+   ("stale", "state", 2.0, 1), "outcome report fields carried")
+ok("values" not in src["psl"], "no values in stats.json")
+eq(stats["sources_failed"], {"ris-v4": "primary: HTTP 503"}, "sources_failed stays")
+ok("psl" in stats["sources_ok"], "sources_ok stays")
+eq(on_disk["sources"], src, "stats.json on disk carries the sources block")
+
+done()
