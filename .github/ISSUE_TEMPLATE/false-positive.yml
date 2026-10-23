@@ -12,7 +12,7 @@ body:
 
         | Set | Report to |
         |---|---|
-        | `ads`, `ads-ir` | [PersianBlocker](https://github.com/MasterKia/PersianBlocker/issues) · [HaGeZi](https://github.com/hagezi/dns-blocklists/issues) · [AdGuard](https://github.com/AdguardTeam/AdGuardSDNSFilter/issues) |
+        | `ads`, `ads-ir` | [PersianBlocker](https://github.com/PersianBlocker/PersianBlocker/issues) (the maintained fork) · [HaGeZi](https://github.com/hagezi/dns-blocklists/issues) |
         | `malware` | [HaGeZi](https://github.com/hagezi/dns-blocklists/issues) |
         | `phishing` | [CERT Polska](https://cert.pl/en/warning-list/) |
         | `cryptominers` | [NoCoin](https://github.com/hoshsadiq/adblock-nocoin-list/issues) |
