@@ -183,7 +183,7 @@ eq((adj.removed, adj.removed_addresses), ([], 0),
 
 # A foreign-only more-specific inside an IR prefix is not added. Longest
 # match alone would put back an IR prefix inside that foreign one, but it sits
-# under a foreign route, so the hijack rule (M2) keeps it out.
+# under a foreign route, so the hijack rule keeps it out.
 adj = bgp.adjust(nets("10.0.0.0/16"), bgp.routes_from([
     "100 30.0.0.0/16", "200 30.0.4.0/22", "100 30.0.5.0/24"]), IR)
 eq(adj.added_addresses, 65536 - 1024,
@@ -234,7 +234,7 @@ eq(strs(adj.added),
     "2001:db8:140::/42", "2001:db8:180::/41"],
    "addition: v6 foreign more-specifics are cut out too")
 
-# ------------------------------------- neutral provider ASNs (review I2, R24)
+# ---------------------------------------------------- neutral provider ASNs
 # AS500 stands for a provider's own ASN registered abroad (Sotoon's AS41227).
 
 NEUTRAL = {500}
@@ -275,7 +275,7 @@ eq((strs(adj.added), strs(adj.removed)),
    (["70.0.0.0/24"], ["10.0.8.0/24", "10.0.10.0/23"]),
    "neutral: an ASN that is also Iranian stays Iranian (adds and shields)")
 
-# ---------------------------------- hijack-shaped additions (review M2, R21)
+# -------------------------------------------------- hijack-shaped additions
 
 adj = bgp.adjust(nets("10.0.0.0/16"), bgp.routes_from([
     "200 60.0.0.0/16", "100 60.0.1.0/24"]), IR)
@@ -364,7 +364,7 @@ eq(raises(lambda: bgp.check_limits(made(500, 500, 0))), None,
    "an empty IPv4 registry skips the limits")
 ok(issubclass(BGPAnomaly, Exception), "BGPAnomaly is an Exception")
 
-# IPv6 is held to the same limits against its own registry (review M1)
+# IPv6 is held to the same limits against its own registry
 
 
 def made6(added: int, removed: int, registry: int) -> Adjustment:

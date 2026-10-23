@@ -121,7 +121,7 @@ eq(saved and {k: saved[1][k] for k in ("url_used", "etag", "validated_at", "entr
    {"url_used": MIRROR, "etag": '"v1"', "validated_at": STAMP, "entries": 3},
    "1 state saved: metadata")
 
-# ------------------------------- 1b a hung primary costs two tries (review M9)
+# ---------------------------------------- 1b a hung primary costs two tries
 
 op = Opener({PRIMARY: FetchError(0, "timed out"), MIRROR: resp(GOOD)})
 slept = []
@@ -424,7 +424,7 @@ o = fetch.acquire(old, st, opener=Opener({PRIMARY: resp(b"", status=304)}), now=
 eq(o.status, "stale", "max_age_days: applies to a 304 too")
 
 # the registry's RIS (3 days) and RIR (30 days) limits, as fetch applies them
-# to the Last-Modified both servers send (review M4, rulings R22 and R26)
+# to the Last-Modified both servers send
 for key in ("ris-v4", "ris-v6", "rir-ripencc", "rir-arin"):
     limit = sources.BY_KEY[key].max_age_days
     for days, served in ((limit - 0.5, True), (limit + 0.5, False)):
@@ -460,7 +460,7 @@ with open(os.path.join(st.root, "empty.json"), "w", encoding="utf-8") as fh:
     fh.write("{}")
 eq(st.load("empty"), None, "store: a copy with no validated_at loads as None")
 
-# -------------------------------------- licence and attribution (review I3)
+# ---------------------------------------------------- licence and attribution
 
 TERMS = {"license": "GPL-3.0", "homepage": "https://h.example",
          "attribution": "Contains T data"}

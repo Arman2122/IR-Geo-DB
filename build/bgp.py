@@ -275,10 +275,9 @@ def adjust(registry: list, routes: list[Route], ir_asns: set[int],
     for v in (4, 6):
         # MOAS: a prefix with any Iranian origin is Iranian, never foreign.
         removed_runs = _longest(in_registry[v] - iranian[v], iranian[v])
-        # Addition mirrors removal. The spec's +191,488 IPv4 for 2026-10-23
-        # predates this rule: it added foreign-only more-specifics inside
-        # Iranian prefixes (188.159.224.0/19 under 188.158.0.0/15, mostly).
-        # The same data gives +182,272 with it.
+        # Addition mirrors removal: a foreign-only more-specific inside an
+        # Iranian prefix (e.g. 188.159.224.0/19 under 188.158.0.0/15) is
+        # routed abroad, so it is not added.
         rivals = in_iranian[v] - iranian[v]
         # An Iranian prefix under a foreign-only less-specific route is a
         # more-specific of someone else's block: the shape of a hijack, which

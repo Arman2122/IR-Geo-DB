@@ -347,7 +347,7 @@ eq(sources.PROVIDERS, {
     "IranServer": {"orgs": ["ORG-GWSN7-RIPE"], "lists": ["iranserver"]},
     "MizbanCloud": {"orgs": ["ORG-SAML1-RIPE"], "lists": ["mizbancloud"]},
     "ParsPack": {"orgs": [], "lists": ["parspack"]},
-}, "providers: exactly the spec 1.1 registry")
+}, "providers: org handles and lists as verified in the RIPE database")
 org_keys = [k for k in keys if k.startswith("ripe-org-")]
 eq(sorted(org_keys),
    sorted(f"ripe-org-{o.lower()}" for p in sources.PROVIDERS.values()
@@ -362,7 +362,7 @@ ok(all(sources.BY_KEY[k].parser == "ripe_org_asns"
 eq(sources.BY_KEY["ripe-org-org-hucc1-ripe"].url,
    "https://rest.db.ripe.net/search.json?query-string=ORG-HUCC1-RIPE"
    "&inverse-attribute=org&type-filter=aut-num&flags=no-referenced",
-   "RIPE org source: the REST inverse query from the spec")
+   "RIPE org source: the REST inverse query")
 
 eq([(s.key, s.attribution) for s in sources.SOURCES if s.attribution],
    [("ris-v4", "Contains RIPE NCC RIS data © RIPE NCC"),
@@ -372,7 +372,7 @@ eq((sources.BY_KEY["ris-v4"].url, sources.BY_KEY["ris-v6"].url),
    ("https://www.ris.ripe.net/dumps/riswhoisdump.IPv4.gz",
     "https://www.ris.ripe.net/dumps/riswhoisdump.IPv6.gz"), "RIS dump URLs")
 
-# stale window per kind of data (spec 2, rulings R10)
+# stale window per kind of data
 STALE = (("rir-", 14), ("ris-", 14), ("xc-", 14), ("cloud-", 30),
          ("ripe-org-", 90), ("threat-ip-", 7), ("malware-", 7),
          ("phishing-", 7), ("crypto-", 7), ("ads-", 30), ("nsfw-", 30),
@@ -383,7 +383,7 @@ got = {s.key: s.max_stale_days for s in sources.SOURCES}
 want = {k: next(d for p, d in STALE if k.startswith(p)) for k in got}
 eq(got, want, "max_stale_days follows the kind of data")
 
-# a Last-Modified older than this is a stalled generator (rulings R22, R26):
+# a Last-Modified older than this is a stalled generator:
 # RIS dumps are made several times a day and are optional, so 3 days; RIR
 # files are daily but stay valid for weeks and rir-ripencc is required, so
 # 30. Nothing else has one; threat feeds legitimately go quiet.
@@ -418,7 +418,7 @@ ok(all(len(set((s.url, *s.mirrors))) == 1 + len(s.mirrors) for s in sources.SOUR
 eq(sources.BY_KEY["ir-domains"].mirrors,
    ("https://raw.githubusercontent.com/bootmortis/iran-hosted-domains/release/domains.txt",
     "https://cdn.jsdelivr.net/gh/bootmortis/iran-hosted-domains@release/domains.txt"),
-   "ir-domains: the spec 1.2 mirrors")
+   "ir-domains: the release-branch and jsDelivr mirrors")
 eq(sources.BY_KEY["psl"].mirrors,
    ("https://raw.githubusercontent.com/publicsuffix/list/main/public_suffix_list.dat",),
    "psl: the GitHub mirror")
@@ -452,7 +452,7 @@ eq({s.key for s in sources.SOURCES if s.max_shrink != 0.5}, {"threat-ip-malware"
 eq(sources.BY_KEY["threat-ip-malware"].max_shrink, 1.0,
    "Feodo may legitimately fall to near zero")
 
-# licences stated in the rulings (R11)
+# licence wording per kind of source
 for prefix, lic in (("rir-", "Registry public data"),
                     ("ris-", "RIPE NCC RIS data (attribution required)"),
                     ("ripe-org-", "RIPE Database (public)")):
@@ -475,7 +475,7 @@ eq({k: sources.BY_KEY[k].parser for k in ("ads-persian-hosts", "ads-persian-ads"
     "allow-adguard-exceptions": "adguard_allow",
     "nsfw-stevenblack-gambling": "hosts", "threat-ip-hagezi": "cidr",
     "iranserver": "cidr"},
-   "new sources use the parsers the brief names")
+   "new sources use the expected parsers")
 
 
 # ------------------------------------------------------------ domain filters

@@ -80,7 +80,7 @@ jobs:
           rm -f mihomo
           mihomo -v
 
-      # The state store (spec 6.2): the last validated copy of every upstream
+      # The state store: the last validated copy of every upstream
       # input, on an orphan `state` branch of this repository, so a source that
       # is down today is served from its stored copy. A missing branch is just
       # the first run. Any other failure to read it stops the job: carrying on

@@ -62,8 +62,7 @@ class Source:
 
 # --------------------------------------------------------------- the registry
 #
-# Every source is tagged with where it comes from, using the classes in the
-# design spec (section 1):
+# Every source is tagged with where it comes from:
 #   authority   the body that creates the data (RIRs, RIPE NCC, a provider's
 #               own list, a national CERT)
 #   derived     computed by this project from authority data
@@ -76,7 +75,7 @@ class Source:
 # small list is not tripped by one removed line. The shrink guard stays at
 # its default except where a source legitimately swings to near zero.
 
-# Iranian infrastructure providers (spec 1.1). A provider's address space is
+# Iranian infrastructure providers. A provider's address space is
 # derived by this project: each RIPE organisation is looked up for its ASNs
 # (the `ripe-org-*` sources below) and every prefix those ASNs announce in RIS
 # is taken from the BGP table. `lists` are the provider's own published
@@ -157,7 +156,7 @@ SOURCES: list[Source] = [
                # regenerated daily; a file a month old is a stalled
                # generator, which would otherwise pass as not-modified
                # forever (the stale window only starts once a URL fails).
-               # A month, not a week (ruling R26): delegations stay valid
+               # A month, not a week: delegations stay valid
                # for weeks, and rir-ripencc is required, so a short limit
                # would stop every release over a merely late file.
                max_age_days=30, max_stale_days=14,

@@ -139,7 +139,6 @@ h = harvest()
 ips, audit = build.build_ip_sets(h, True)
 ir = ips["ir"]
 
-# the brief's assertions
 ok(ipaddress.ip_network("20.0.0.0/24") in ips["ir"].v4, "BGP addition reaches ir")
 ok(not any(n.overlaps(ipaddress.ip_network("10.0.2.0/24")) for n in ips["ir"].v4),
    "BGP removal reaches ir")
@@ -213,7 +212,7 @@ eq(set(ips), {"ir", "ir-cdn", "ir-full", "private", "malware", "phishing"},
 ok("crosscheck_ipverse" in audit and "crosscheck_ipdeny" in audit,
    "cross-checks still run")
 
-# RIS timestamp (Ruling R6)
+# RIS timestamp
 when = "Fri, 23 Oct 2026 06:00:00 GMT"
 _, a = build.build_ip_sets(harvest(outcomes={"ris-v4": fetch.Outcome(
     key="ris-v4", status="fresh", last_modified=when,
@@ -256,7 +255,7 @@ ok(overlaps(ips4["ir"].v4, "104.16.5.0/24"),
    "--no-strict-exclude reports the cloud overlap without removing it")
 eq(a4["foreign_cloud_excluded"], False, "audit records the cloud guard was off")
 
-# Provider ASNs registered abroad are neutral (review I2): AS41227 stands for
+# Provider ASNs registered abroad are neutral: AS41227 stands for
 # Sotoon's ORG-IB117-RIPE network in the Netherlands. The build passes every
 # ASN found under the ripe-org-* keys, the same set ir-cdn is built from.
 SOTOON_NL = VALUES["ris-v4"] + ["41227 10.0.9.0/24", "41227 193.29.17.0/24"]
@@ -277,7 +276,7 @@ ok(overlaps(ips5["ir-cdn"].v4, "193.29.17.0/24"),
 eq(a5["providers"]["Sotoon"]["asns"], [41227, 202319],
    "provider ASN abroad: the same ASNs feed ir-cdn")
 
-# Hijack-shaped additions are left out and counted (review M2)
+# Hijack-shaped additions are left out and counted
 ips6, a6 = build.build_ip_sets(harvest(ris_v4=VALUES["ris-v4"] + [
     "58224 30.0.1.0/24", "64501 30.0.0.0/16"]), True)
 ok(not overlaps(ips6["ir"].v4, "30.0.1.0/24"),
@@ -286,7 +285,7 @@ eq((a6["bgp"]["excluded_prefixes"], a6["bgp"]["excluded_addresses"],
     a6["bgp"]["added_addresses"]), (1, 256, 512),
    "audit.bgp counts the excluded prefix and its addresses")
 
-# Mixed-family subtraction (review I4): one provider's v4 and v6 entries that
+# Mixed-family subtraction: one provider's v4 and v6 entries that
 # each strictly contain a bogon crashed exclude_networks' collapse
 private_nets = [net(p) for p in build.PRIVATE_RANGES]
 got = raises(lambda: build._subtract([net("10.0.0.0/7"), net("fc00::/6")],
@@ -304,7 +303,6 @@ eq(a7["providers"]["Derak"]["list_addresses"], 2 ** 24,
 # ------------------------------------------------------------- domain sets
 
 doms, daudit = build.build_domain_sets(h)
-# the brief's assertions
 ok("dyndns.org" not in doms["ir"].suffix and "xn--mgba3a4f16a" in doms["ir"].suffix,
    "ir domain filters")
 ok("aparat.com" in doms["ir"].suffix, "v2fly CATEGORY-IR merged")
@@ -384,7 +382,7 @@ eq(stats["sources_failed"], {"ris-v4": "primary: HTTP 503"}, "sources_failed sta
 ok("psl" in stats["sources_ok"], "sources_ok stays")
 eq(on_disk["sources"], src, "stats.json on disk carries the sources block")
 
-# ------------------------------------------- verify's provider checks (I1)
+# ------------------------------------------------ verify's provider checks
 
 
 def checks_for(applied, ris_v4_status, arvan=100, sotoon=0) -> dict:
@@ -446,7 +444,7 @@ def quiet(fn, *args):
         return fn(*args), buf.getvalue()
 
 
-# the brief's assertions
+# limits, skips and old-schema tolerance
 eq(build.shrink_problems(mk(940, 100, 1000), base) != [], True, "ir -6% trips")
 eq(build.shrink_problems(mk(960, 100, 1000), base), [], "ir -4% passes")
 eq(len(build.shrink_problems(mk(1000, 89, 1000), base)), 1, "ir domains -11% trips")
@@ -618,7 +616,7 @@ try:
     eq((got, n, slept), (None, 4, [2, 4, 8]),
        "previous_stats: a 5xx is retried with the sources' backoff")
     ok("HTTP 503" in text, "previous_stats: the 5xx is logged")
-    # one blip must not switch the guard off (review M3)
+    # one blip must not switch the guard off
     fetch.http_get = fake_get(fetch.FetchError(0, "timed out"), OK_BODY)
     got, n, text = prev()
     eq((got, n), ({"version": "v1", "audit": {}}, 2),
@@ -758,7 +756,7 @@ ok("added 4,096 addresses" in text and "removed 768 addresses" in text and
    "an applied BGP adjustment quotes the added and removed addresses")
 ok("registry-only" not in text, "applied: not described as registry-only")
 ok("Registry, then routing" in text and "most specific route" in text,
-   "provenance: described as registry, then routing (review M7)")
+   "provenance: described as registry, then routing")
 ok("Iranian only if a RIR delegated" not in text,
    "provenance: the registry-only sentence is gone")
 text = notes(audit={"bgp": {**BGP, "applied": False}})

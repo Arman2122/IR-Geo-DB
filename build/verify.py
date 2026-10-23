@@ -88,8 +88,8 @@ def provider_checks(stats: dict) -> list[tuple[str, bool | None]]:
     ArvanCloud publishes its own list, so it is always checked. Sotoon
     publishes none: its addresses come only from what its ASNs announce in
     RIS. Without IPv4 routing data (RIS dropped, unreadable, or IPv6 only) it
-    is legitimately 0, and losing RIS must never block a release on its own
-    (spec §3 and §10).
+    is legitimately 0, and losing RIS must never block a release on its
+    own.
     """
     audit = stats.get("audit") or {}
     providers = audit.get("providers") or {}

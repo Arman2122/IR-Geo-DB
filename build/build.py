@@ -147,7 +147,7 @@ def _ris_routes(h: fetch.Harvest) -> list | None:
     """The RIS routes, parsed once for both `ir` and `ir-cdn`.
 
     None when there are none to use: then `ir` is registry-only and `ir-cdn`
-    the published lists only, and the build carries on (spec §3).
+    the published lists only, and the build carries on.
     """
     v4, v6 = h.get("ris-v4"), h.get("ris-v6")
     if not v4 and not v6:
@@ -178,7 +178,7 @@ def _bgp_adjust(h: fetch.Harvest, reg_v4: list, reg_v6: list,
                 ir_asns: set[int], routes: list | None,
                 neutral_asns: set[int] = frozenset()
                 ) -> tuple[list, list, dict]:
-    """Registry IR → BGP add/remove → anomaly limits (spec §3).
+    """Registry IR → BGP add/remove → anomaly limits.
 
     `neutral_asns` are the providers' own ASNs (bgp.adjust says how they
     count). Raises bgp.BGPAnomaly when the change is beyond the limits: a
@@ -242,7 +242,7 @@ def _provider_networks(h: fetch.Harvest, routes: list | None,
 
     The ASNs are the ones RIPE holds for each provider organisation. Bogons
     are removed (Derak publishes a 192.168.x range); foreign clouds are not,
-    because ParsPack's real edges sit on Vultr (spec §4). Kept out of `ir`:
+    because ParsPack's real edges sit on Vultr. Kept out of `ir`:
     the published lists include edge nodes that are not in Iran.
     """
     report, everything, bad = {}, [], 0
@@ -252,7 +252,7 @@ def _provider_networks(h: fetch.Harvest, routes: list | None,
         list4, list6, n_bad = parse_networks(
             [v for key in info["lists"] for v in h.get(key)])
         bad += n_bad
-        # every count is after collapse and bogon removal (Ruling R2)
+        # every count is after collapse and bogon removal
         networks, _ = _subtract(announced, private)
         listed, _ = _subtract(list4 + list6, private)
         own = _collapse(networks + listed)
@@ -325,7 +325,7 @@ def build_ip_sets(h: fetch.Harvest, strict_exclude: bool) -> tuple[dict, dict]:
     private = make_ipset("private", IP_ROLES["private"][0], PRIVATE_RANGES,
                          ["RFC 1918 / 5735 / 6598 / 4193"])
 
-    # Safety subtraction (spec §6.3): a threat feed that lists a bogon, a
+    # Safety subtraction: a threat feed that lists a bogon, a
     # cloud range or an Iranian provider's edge would block far more than
     # one bad host.
     t4, t6, t_bad = parse_networks(h.get("threat-ip-malware") +
@@ -409,8 +409,8 @@ def build_domain_sets(h: fetch.Harvest) -> tuple[dict[str, DomainSet], dict]:
     out["ir"], psl_removed = _ir_domains(h, psl_rules)
 
     # AdGuard's own allowlists: names it found to break real sites when
-    # blocked. An entry that is a single label or a public suffix is ignored
-    # (spec §5); without the PSL only single labels are.
+    # blocked. An entry that is a single label or a public suffix is
+    # ignored; without the PSL only single labels are.
     allow = (set(h.get("allow-adguard-exclusions")) |
              set(h.get("allow-adguard-exceptions")))
     suffixes = public_suffixes(psl_rules)
