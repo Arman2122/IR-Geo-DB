@@ -183,9 +183,13 @@ def prune_covered(names: set[str]) -> tuple[list[str], int]:
 
 
 def make_domainset(slug: str, title: str, *, suffix=(), full=(), keyword=(),
-                   regex=(), sources: list[str], collapse_tld: str | None = None,
+                   regex=(), sources: list[str],
+                   collapse_tld: str | tuple[str, ...] | None = None,
                    prune: bool = True) -> DomainSet:
-    """Build a normalised DomainSet from raw upstream values."""
+    """Build a normalised DomainSet from raw upstream values.
+
+    collapse_tld is one TLD or a tuple of them; each is collapsed the same way.
+    """
     ds = DomainSet(slug=slug, title=title, sources=list(sources))
 
     clean_suffix, clean_full, bad = set(), set(), 0
@@ -207,11 +211,17 @@ def make_domainset(slug: str, title: str, *, suffix=(), full=(), keyword=(),
 
     if collapse_tld:
         # Replace every *.tld entry with the single rule that covers them all.
-        tld = collapse_tld.lower().lstrip(".")
-        dot = "." + tld
-        clean_suffix = {n for n in clean_suffix if n != tld and not n.endswith(dot)}
-        clean_full = {n for n in clean_full if n != tld and not n.endswith(dot)}
-        clean_suffix.add(tld)
+        tlds = (collapse_tld,) if isinstance(collapse_tld, str) else collapse_tld
+        for tld in tlds:
+            tld = tld.lower().lstrip(".")
+            if not tld:
+                continue
+            dot = "." + tld
+            clean_suffix = {n for n in clean_suffix
+                            if n != tld and not n.endswith(dot)}
+            clean_full = {n for n in clean_full
+                          if n != tld and not n.endswith(dot)}
+            clean_suffix.add(tld)
 
     if prune:
         # An exact-match entry already covered by a suffix rule is redundant.
@@ -233,6 +243,83 @@ def make_domainset(slug: str, title: str, *, suffix=(), full=(), keyword=(),
 
     ds.malformed = bad
     return ds
+
+
+# ------------------------------------------------------------ domain filters
+
+
+def _parents(name: str):
+    """Yield name, then each proper parent suffix: a.b.c -> a.b.c, b.c, c."""
+    parts = name.split(".")
+    for i in range(len(parts)):
+        yield ".".join(parts[i:])
+
+
+def public_suffixes(rules: list[str]) -> set[str]:
+    """Rule names from both PSL sections, with `private:`, `*.` and `!` stripped.
+
+    `rules` are sources.parse_psl values.
+    """
+    out = set()
+    for rule in rules:
+        if rule.startswith("private:"):
+            rule = rule[len("private:"):]
+        if rule.startswith("!"):
+            rule = rule[1:]
+        if rule.startswith("*."):
+            rule = rule[2:]
+        if rule:
+            out.add(rule)
+    return out
+
+
+def psl_filter(names: set[str], rules: list[str],
+               keep: frozenset[str] = frozenset()) -> tuple[set[str], int]:
+    """Drop names that are shared-hosting suffixes from the PSL private section.
+
+    A suffix rule for `dyndns.org` would route every host under it, so the
+    suffix itself must not be emitted. Only `private:` rules count. A name goes
+    if it equals a plain rule, or is a direct child of a `*.x` rule unless a
+    `!name` exception covers that exact name. Names deeper under a suffix
+    (foo.dyndns.org) are specific hosts and stay, and `keep` overrides all.
+    Returns (kept, removed_count).
+    """
+    plain, wild, exempt = set(), set(), set()
+    for rule in rules:
+        if not rule.startswith("private:"):
+            continue
+        rule = rule[len("private:"):]
+        if rule.startswith("!"):
+            exempt.add(rule[1:])
+        elif rule.startswith("*."):
+            wild.add(rule[2:])
+        else:
+            plain.add(rule)
+
+    kept = set()
+    for name in names:
+        if name not in keep:
+            if name in plain:
+                continue
+            parent = name.partition(".")[2]
+            if parent in wild and name not in exempt:
+                continue
+        kept.add(name)
+    return kept, len(names) - len(kept)
+
+
+def subtract_allowlist(names: set[str], allow: set[str],
+                       public_suffixes: set[str]) -> tuple[set[str], int]:
+    """Drop names that equal, or sit under, an allowlist entry.
+
+    An entry that is a single label or a public suffix is ignored: allowing
+    `com` must not wipe out every .com name. Each name's parent suffixes are
+    looked up in a set, so the cost is names x labels, not names x allow.
+    Returns (kept, removed_count).
+    """
+    effective = {a for a in allow if "." in a and a not in public_suffixes}
+    kept = {n for n in names if not any(p in effective for p in _parents(n))}
+    return kept, len(names) - len(kept)
 
 
 # ------------------------------------------------ sing-box rule-set ingestion

@@ -26,7 +26,8 @@ import sources  # noqa: E402
 from build import exclude_networks  # noqa: E402
 from model import (IPSet, clean_domain, from_singbox_rules,  # noqa: E402
                    make_domainset, parse_networks, prune_covered,
-                   range_to_cidrs)
+                   psl_filter, public_suffixes, range_to_cidrs,
+                   subtract_allowlist)
 
 passed = failed = 0
 
@@ -314,6 +315,58 @@ for name in ("ris", "ripe_org_asns", "v2fly_dlc", "psl", "adguard_allow"):
     ok(name in sources.PARSERS, f"parser '{name}' is registered")
 ok(all(s.parser in sources.PARSERS for s in sources.SOURCES),
    "every registered source names a parser that exists")
+
+
+# ------------------------------------------------------------ domain filters
+
+# Rules come from sources.parse_psl: ICANN rules are plain, private-section
+# rules carry a "private:" prefix. Only the private section is filtered on.
+R = sources.parse_psl(PSL).values
+kept, n = psl_filter({"dyndns.org", "foo.dyndns.org", "a.compute.example",
+                      "www.compute.example", "digikala.com"}, R)
+eq(kept, {"foo.dyndns.org", "www.compute.example", "digikala.com"}, "psl filter")
+eq(n, 2, "psl count")
+eq(psl_filter({"dyndns.org"}, R, keep=frozenset({"dyndns.org"}))[0], {"dyndns.org"},
+   "psl keep")
+
+# A '*.' rule removes direct children only: the suffix itself and anything
+# deeper are specific hosts. No exception rule here, so every child goes.
+kept, n = psl_filter({"a.pages.example", "b.pages.example", "pages.example",
+                      "x.a.pages.example"}, ["private:*.pages.example"])
+eq(kept, {"pages.example", "x.a.pages.example"}, "psl wildcard: direct children only")
+eq(n, 2, "psl wildcard count")
+# ICANN rules are never filtered, even when the name equals one.
+eq(psl_filter({"co.ir", "ir"}, R)[0], {"co.ir", "ir"}, "psl: icann rules are ignored")
+# keep beats the wildcard rule too, and an empty rule list changes nothing.
+eq(psl_filter({"a.compute.example"}, R, keep=frozenset({"a.compute.example"}))[0],
+   {"a.compute.example"}, "psl keep beats a wildcard rule")
+eq(psl_filter({"dyndns.org"}, []), ({"dyndns.org"}, 0), "psl: no rules, no removals")
+
+eq(public_suffixes(R), {"ir", "co.ir", "dyndns.org", "compute.example",
+                        "www.compute.example"},
+   "public_suffixes: both sections, prefixes stripped")
+
+kept, n = subtract_allowlist({"ads.x.com", "x.com", "y.com", "co.ir"},
+                             {"x.com", "com", "co.ir"}, public_suffixes(R))
+eq(kept, {"y.com", "co.ir"},
+   "allowlist: entry + children; single label and public suffix ignored")
+eq(n, 2, "allowlist count")
+# The match is on a dot boundary: notx.com is not under x.com.
+eq(subtract_allowlist({"notx.com", "a.b.x.com"}, {"x.com"}, set())[0], {"notx.com"},
+   "allowlist: dot-boundary match, any depth")
+
+ds = make_domainset("ir", "t", suffix=["a.ir", "xn--mgba3a4f16a", "b.xn--mgba3a4f16a",
+                                       "c.com"],
+                    sources=[], collapse_tld=("ir", "xn--mgba3a4f16a"))
+eq(ds.suffix, {"ir", "xn--mgba3a4f16a", "c.com"}, "multi-TLD collapse")
+ds = make_domainset("ir", "t", suffix=["a.ir"], full=["x.xn--mgba3a4f16a", "host.org"],
+                    sources=[], collapse_tld=("ir", "xn--mgba3a4f16a"))
+eq((ds.suffix, ds.full), ({"ir", "xn--mgba3a4f16a"}, {"host.org"}),
+   "multi-TLD collapse also clears exact names")
+# The plain string form still collapses only that one TLD.
+ds = make_domainset("ir", "t", suffix=["a.ir", "b.xn--mgba3a4f16a", "c.com"],
+                    sources=[], collapse_tld="ir")
+eq(ds.suffix, {"ir", "b.xn--mgba3a4f16a", "c.com"}, "collapse_tld str: only that TLD")
 
 
 # ------------------------------------------------- sing-box rule ingestion
