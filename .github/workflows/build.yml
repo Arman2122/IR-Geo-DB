@@ -11,6 +11,10 @@ on:
         description: "Build and verify only — do not publish"
         type: boolean
         default: false
+      allow_shrink:
+        description: "Publish even if a set shrank beyond its day-over-day limit (after reviewing why)"
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths:
@@ -40,7 +44,8 @@ jobs:
           echo "date=$(date -u '+%Y-%m-%d %H:%M UTC')" >> "$GITHUB_OUTPUT"
 
       - name: Unit tests
-        run: python3 build/test_units.py
+        run: |
+          for t in build/test_*.py; do echo "== $t"; python3 "$t" || exit 1; done
 
       # The compilers are pinned and checksummed rather than fetched as
       # "latest": they run in a job that can write to the repository, and an
@@ -75,17 +80,84 @@ jobs:
           rm -f mihomo
           mihomo -v
 
+      # The state store (spec 6.2): the last validated copy of every upstream
+      # input, on an orphan `state` branch of this repository, so a source that
+      # is down today is served from its stored copy. A missing branch is just
+      # the first run. Any other failure to read it stops the job: carrying on
+      # with an empty store would let the save step below replace the branch
+      # with it and lose every copy that this run did not re-fetch.
+      - name: Restore state
+        run: |
+          set -euo pipefail
+          mkdir -p .lkg
+          if git fetch --no-tags --depth 1 origin state; then
+            git archive FETCH_HEAD | tar -x -C .lkg
+          else
+            # exit code 2 means "no such ref"; anything else is a real failure
+            rc=0
+            git ls-remote --exit-code --heads origin state >/dev/null || rc=$?
+            if [ "$rc" -ne 2 ]; then
+              echo "::error::could not read the state branch (ls-remote exit $rc)"
+              exit 1
+            fi
+            echo "no state branch yet (first run)"
+          fi
+          ls .lkg | wc -l
+
       # --require-binaries turns a missing compiler into a hard failure, so a
       # release can never silently ship without the .srs / .mrs rule-sets.
+      # --allow-shrink is the override for the set-level day-over-day guard,
+      # reachable only from a manual run, after a human has read why.
       - name: Build
+        id: build
         run: |
           python3 build/build.py \
             --outdir dist \
             --version "${{ steps.meta.outputs.version }}" \
-            --require-binaries
+            --require-binaries \
+            --lkg-dir .lkg \
+            ${{ inputs.allow_shrink && '--allow-shrink' || '' }}
 
       - name: Verify
         run: python3 build/verify.py dist
+
+      # Save the state store before anything below clears the work tree (the
+      # dist step deletes everything but dist/ and .git). It also runs after a
+      # failed Build: the store only ever adds or overwrites validated copies,
+      # never deletes one, so .lkg is a superset of what was restored and a
+      # failure cannot lose state. A dry run of unmerged code must not
+      # overwrite the canonical state, so it is skipped there.
+      - name: Save state
+        if: ${{ always() && steps.build.outcome != 'skipped' && (github.event_name != 'workflow_dispatch' || !inputs.dry_run) }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          # an interrupted write can leave its temp file behind; never keep one
+          find .lkg -maxdepth 1 -name '*.tmp' -delete 2>/dev/null || true
+          if [ -z "$(ls -A .lkg 2>/dev/null)" ]; then
+            echo "no validated inputs to save"
+            exit 0
+          fi
+          cd .lkg
+          git init -q
+          git checkout -q -b state
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "state ${VERSION} ($(date -u '+%Y-%m-%d %H:%M UTC'))"
+          # a single orphan commit, force-pushed, the same pattern as dist
+          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:refs/heads/state
+
+      - name: Release notes
+        if: always()
+        run: |
+          # a build that died early has no stats to describe
+          [ -f dist/stats.json ] || exit 0
+          python3 build/release_notes.py \
+            dist/stats.json "${{ steps.meta.outputs.version }}" > NOTES.md
+          head -40 NOTES.md
 
       - name: Job summary
         if: always()
@@ -104,16 +176,14 @@ jobs:
               print(f"| `{k}` | ip | {v['ipv4'] + v['ipv6']:,} |")
           for k, v in s["domain_sets"].items():
               print(f"| `{k}` | domain | {v['suffix'] + v['full']:,} |")
-          if s.get("sources_failed"):
-              print("\n**Degraded sources:** " + ", ".join(s["sources_failed"]))
           PY
+            # the release notes' own "Source health" section, up to the next
+            # "## " heading; absent when every source was served fresh
+            if [ -f NOTES.md ]; then
+              echo ""
+              awk '/^## / { p = ($0 == "## Source health") } p' NOTES.md
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Release notes
-        run: |
-          python3 build/release_notes.py \
-            dist/stats.json "${{ steps.meta.outputs.version }}" > NOTES.md
-          head -40 NOTES.md
 
       # ---------------------------------------------------------- publishing
       # Two channels on purpose:

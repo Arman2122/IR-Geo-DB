@@ -4,6 +4,9 @@ release-assets/
 *.zip
 *.tar.gz
 NOTES.md
+# state store: the last validated copy of each source (build.py --lkg-dir).
+# CI persists it on the orphan `state` branch, never on main
+.lkg/
 
 # local download cache (build.py --cache)
 .cache/

@@ -29,4 +29,5 @@ jobs:
         run: python3 build/geodat.py
 
       - name: Unit tests
-        run: python3 build/test_units.py
+        run: |
+          for t in build/test_*.py; do echo "== $t"; python3 "$t" || exit 1; done
