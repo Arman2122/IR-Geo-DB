@@ -173,6 +173,57 @@ adj = bgp.adjust(nets("10.3.0.0/17"), bgp.routes_from(["200 10.3.0.0/16"]), IR)
 eq((adj.removed, adj.removed_addresses), ([], 0),
    "a foreign route larger than the registry block removes nothing")
 
+# ------------------------------------------------- longest match on addition
+
+# A foreign-only more-specific inside an IR prefix is not added; an IR prefix
+# inside that foreign one is.
+adj = bgp.adjust(nets("10.0.0.0/16"), bgp.routes_from([
+    "100 30.0.0.0/16", "200 30.0.4.0/22", "100 30.0.5.0/24"]), IR)
+eq(adj.added_addresses, 65536 - 1024 + 256,
+   "addition: IR /16 minus the foreign /22, plus the IR /24 inside it")
+eq(strs(adj.added),
+   ["30.0.0.0/22", "30.0.5.0/24", "30.0.8.0/21", "30.0.16.0/20",
+    "30.0.32.0/19", "30.0.64.0/18", "30.0.128.0/17"],
+   "addition: the foreign /22 is cut out, the IR /24 put back")
+ok(not any(n.overlaps(net("30.0.4.0/24")) or n.overlaps(net("30.0.6.0/23"))
+           for n in adj.networks),
+   "addition: foreign-routed space stays out of the result")
+
+# Deeper nesting: IR /16 > foreign /22 > IR /24 > foreign /25.
+adj = bgp.adjust(nets("10.0.0.0/16"), bgp.routes_from([
+    "100 40.0.0.0/16", "200 40.0.4.0/22", "100 40.0.5.0/24",
+    "300 40.0.5.128/25"]), IR)
+eq(adj.added_addresses, 65536 - 1024 + 256 - 128,
+   "addition: the longest match decides at every depth")
+
+# MOAS inside an IR prefix is Iranian, so it does not cut the addition.
+adj = bgp.adjust(nets("10.0.0.0/16"), bgp.routes_from([
+    "100 30.0.0.0/16", "200 30.0.8.0/24", "100 30.0.8.0/24"]), IR)
+eq(strs(adj.added), ["30.0.0.0/16"], "addition: a MOAS more-specific stays")
+
+# A foreign route covering an IR prefix does not shield anything.
+adj = bgp.adjust(nets("10.0.0.0/16"), bgp.routes_from([
+    "200 50.0.0.0/8", "100 50.1.0.0/16"]), IR)
+eq(strs(adj.added), ["50.1.0.0/16"],
+   "addition: a foreign less-specific route takes nothing away")
+
+# An IR prefix straddling the registry: only the uncovered part, minus a
+# foreign more-specific there, is added; one inside the registry is removed.
+adj = bgp.adjust(nets("10.0.0.0/16"), bgp.routes_from([
+    "100 10.0.0.0/15", "200 10.1.4.0/22", "200 10.0.9.0/24"]), IR)
+eq(adj.added_addresses, 65536 - 1024, "addition: registry and foreign cut out")
+eq(strs(adj.removed), ["10.0.9.0/24"],
+   "removal is unchanged under an IR aggregate")
+
+# v6 follows the same rule.
+adj = bgp.adjust(nets("2001:db8::/48"), bgp.routes_from([
+    "100 2001:db8:100::/40", "200 2001:db8:100::/48"]), IR)
+eq(strs(adj.added),
+   ["2001:db8:101::/48", "2001:db8:102::/47", "2001:db8:104::/46",
+    "2001:db8:108::/45", "2001:db8:110::/44", "2001:db8:120::/43",
+    "2001:db8:140::/42", "2001:db8:180::/41"],
+   "addition: v6 foreign more-specifics are cut out too")
+
 # --------------------------------------------------------------- edge cases
 
 adj = bgp.adjust(nets("10.0.0.0/16", "10.0.1.0/24", "10.0.0.0/17"), [], IR)

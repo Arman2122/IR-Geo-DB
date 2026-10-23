@@ -5,12 +5,17 @@ The registry says which address space was delegated to an organisation in
 Iran. RIPE RIS says which network originates each prefix today. Where the two
 disagree, routing wins, decided by longest match:
 
-- Add: prefixes originated by an Iranian ASN, minus the registry space they
-  overlap. Only announced prefixes are added, never a covering block.
+- Add: prefixes originated by an Iranian ASN, minus the foreign-only prefixes
+  strictly inside them (Iranian prefixes inside those count again), minus the
+  registry space they overlap. Only announced prefixes are added, never a
+  covering block.
 - Remove: prefixes inside registry space whose origins are all foreign, minus
   the Iranian-origin prefixes strictly inside them. A foreign route that
   covers registry space (a less-specific aggregate) never removes anything.
 - A prefix with several origins (MOAS) counts as Iranian if any origin is.
+
+Both rules are the same test: the most specific route covering an address
+decides whose it is.
 
 The IPv4 table is over a million routes, so everything here works on integer
 intervals. ip_network objects would cost hundreds of megabytes; they are only
@@ -161,6 +166,31 @@ def _registry_runs(registry) -> dict[int, list[tuple[int, int]]]:
     return {v: _merge(iv) for v, iv in by_family.items()}
 
 
+def _longest(prefixes, rivals) -> list[tuple[int, int]]:
+    """The space where one of `prefixes` is the longest match over `rivals`.
+
+    Each prefix keeps its addresses except those under a rival strictly
+    inside it. CIDR prefixes are nested or disjoint, so the union of those
+    pieces is exactly that space at any depth: a prefix inside a rival inside
+    another prefix gets its addresses back as a piece of its own. A rival that
+    starts at the same address but is larger covers the prefix and takes
+    nothing from it.
+    """
+    rivals = sorted(rivals)
+    starts = [s for s, _ in rivals]
+    pieces = []
+    for s, e in prefixes:
+        holes = []
+        j = bisect_left(starts, s)
+        while j < len(rivals) and starts[j] <= e:
+            rs, r_end = rivals[j]
+            if r_end <= e and (rs, r_end) != (s, e):
+                holes.append((rs, r_end))
+            j += 1
+        pieces.extend(_subtract([(s, e)], _merge(holes)))
+    return _merge(pieces)
+
+
 # -------------------------------------------------------------- adjustment
 
 
@@ -173,42 +203,43 @@ def adjust(registry: list, routes: list[Route], ir_asns: set[int]) -> Adjustment
     it, is inside; a route larger than that covers it and is never removed.
     """
     reg = _registry_runs(registry)
-    reg_starts = {v: [s for s, _ in runs] for v, runs in reg.items()}
-    reg_ends = {v: [e for _, e in runs] for v, runs in reg.items()}
 
     iranian: dict[int, set] = {4: set(), 6: set()}   # any IR origin
-    foreign: dict[int, set] = {4: set(), 6: set()}   # a foreign origin, inside
     for version, start, end, _, origin in routes:
         if origin in ir_asns:
             iranian[version].add((start, end))
+    ir_runs = {v: _merge(iranian[v]) for v in (4, 6)}
+
+    # Foreign routes matter only inside registry space (removal) or inside
+    # Iranian-announced space (where they cut into an addition). The rest of
+    # the table is bisected and dropped.
+    bounds = {v: ([s for s, _ in reg[v]], [e for _, e in reg[v]],
+                  [s for s, _ in ir_runs[v]], [e for _, e in ir_runs[v]])
+              for v in (4, 6)}
+    in_registry: dict[int, set] = {4: set(), 6: set()}
+    in_iranian: dict[int, set] = {4: set(), 6: set()}
+    for version, start, end, _, origin in routes:
+        if origin in ir_asns:
             continue
-        i = bisect_right(reg_starts[version], start) - 1
-        if i >= 0 and end <= reg_ends[version][i]:
-            foreign[version].add((start, end))
+        reg_s, reg_e, ir_s, ir_e = bounds[version]
+        i = bisect_right(reg_s, start) - 1
+        if i >= 0 and end <= reg_e[i]:
+            in_registry[version].add((start, end))
+        i = bisect_right(ir_s, start) - 1
+        if i >= 0 and end <= ir_e[i]:
+            in_iranian[version].add((start, end))
 
     networks, added, removed = [], [], []
     counts = {}
     for v in (4, 6):
         # MOAS: a prefix with any Iranian origin is Iranian, never foreign.
-        candidates = foreign[v] - iranian[v]
-        ir_sorted = sorted(iranian[v])
-        ir_starts = [s for s, _ in ir_sorted]
-
-        pieces = []
-        for fs, fe in candidates:
-            # Iranian prefixes strictly inside this one keep their space. Equal
-            # ones cannot occur (MOAS above); one starting here but larger
-            # covers it and does not count.
-            holes = []
-            j = bisect_left(ir_starts, fs)
-            while j < len(ir_sorted) and ir_starts[j] <= fe:
-                s, e = ir_sorted[j]
-                if e <= fe:
-                    holes.append((s, e))
-                j += 1
-            pieces.extend(_subtract([(fs, fe)], _merge(holes)))
-        removed_runs = _merge(pieces)
-        added_runs = _subtract(_merge(iranian[v]), reg[v])
+        removed_runs = _longest(in_registry[v] - iranian[v], iranian[v])
+        # Addition mirrors removal. The spec's +191,488 IPv4 for 2026-10-23
+        # predates this rule: it added foreign-only more-specifics inside
+        # Iranian prefixes (188.159.224.0/19 under 188.158.0.0/15, mostly).
+        # The same data gives +182,272 with it.
+        added_runs = _subtract(_longest(iranian[v], in_iranian[v] - iranian[v]),
+                               reg[v])
         result = _merge(_subtract(reg[v], removed_runs) + added_runs)
 
         networks += _networks(v, result)
@@ -226,7 +257,7 @@ def check_limits(adj: Adjustment, max_add: float = 0.20,
                  max_remove: float = 0.10) -> None:
     """Raise BGPAnomaly if the adjustment moves too much IPv4 space.
 
-    On 2026-10-23 the adjustment was +1.8 % / -0.8 %. A jump past the limits
+    On 2026-10-23 the adjustment was +1.7 % / -0.8 %. A jump past the limits
     means a leak, a broken dump or a lost ASN list, not a change in Iran.
     """
     base = adj.registry_addresses
