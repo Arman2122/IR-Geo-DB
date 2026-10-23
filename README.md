@@ -316,15 +316,24 @@ specific route decides whose an address is:
 - **Added:** prefixes originated by an Iran-registered ASN that the registry
   doesn't cover, such as Respina's `5.160.0.0/16`, which the registry lists
   under the UAE. A foreign more-specific route inside one of them is left out.
+  So is an Iranian prefix that sits under a less-specific route only foreign
+  networks announce: that is what a hijack of someone else's block looks
+  like, and adding it would send that block's traffic direct.
 - **Removed:** registry space whose most specific route is originated by a
   foreign ASN, such as Iranian space leased to foreign hosts. A foreign
   *covering* route (a less-specific aggregate) never removes anything.
+- **Not foreign:** the Iranian providers' own networks registered abroad, such
+  as Sotoon's AS41227 (Netherlands) and ArvanCloud's UAE-registered ASNs
+  (see the next section). A route only they announce neither removes the
+  provider's Iranian space nor is added.
 
-On 2026-10-23 that added 182,272 and removed 86,272 IPv4 addresses, leaving
-10,936,064 addresses in 1,917 prefixes. A leak or a broken routing dump must
-not reach you as data, so the build fails if routing would add more than 20 %
-or remove more than 10 % of the registry's IPv4 addresses (it was +1.7 % and
-−0.8 %). Without routing data, `ir` is registry-only.
+On 2026-10-23 that added 180,992 and removed 80,896 IPv4 addresses, leaving
+10,940,160 addresses in 1,901 prefixes; 1,280 addresses in 4 prefixes were left
+out as hijack-shaped. A leak or a broken routing dump must not reach you as
+data, so the build fails if routing would add more than 20 % or remove more
+than 10 % of the registry's addresses, IPv4 and IPv6 each (it was +1.7 % and
+−0.7 % for IPv4, +0.2 % and −3.1 % for IPv6). Without routing data, `ir` is
+registry-only.
 
 Three more consequences, all deliberate:
 
@@ -451,10 +460,10 @@ source — fixing it there fixes it for everyone. See [CONTRIBUTING.md](CONTRIBU
 **Set sizes vary a lot, and small does not mean broken.** `cryptominers` is a
 few hundred entries because its source tracks *currently active* miners rather
 than accumulating history. `geoip:malware` is Feodo Tracker plus HaGeZi's IP
-feed, about 31,500 addresses on 2026-10-23 after private, cloud and `ir-cdn`
-ranges are removed. `geoip:phishing` is deliberately empty: no clean, licensed
-phishing IP feed exists, and an empty set is better than the previous one,
-which carried Google and Cloudflare addresses. `ads` is about 70,000 domains;
+feed, about 31,500 prefixes (36,635 addresses) on 2026-10-23 after private,
+cloud and `ir-cdn` ranges are removed. `geoip:phishing` is deliberately empty:
+no clean, licensed phishing IP feed exists, and an empty set is better than the
+previous one, which carried Google and Cloudflare addresses. `ads` is about 70,000 domains;
 `malware`, `phishing` and `nsfw` are the large ones. Live counts are always in
 `stats.json`.
 
@@ -470,16 +479,21 @@ One upstream having a bad day must not reach you as broken data.
 GitLab, Codeberg and jsDelivr; jsDelivr for PersianBlocker, NoCoin, StevenBlack
 and AdGuard's allowlists; the Public Suffix List's GitHub mirror; two mirrors
 of the Iranian domain list. Requests are conditional, so an unchanged file
-costs a `304`.
+costs a `304`. A URL is tried up to four times on a server error and twice on
+a timeout or refused connection before the next mirror is tried.
 
 **Validation.** A download is believed only after it passes. An HTML page is
 rejected, and so is a file under the source's minimum size or entry count, or
 one that shrank beyond its limit (half, by default) against the last good copy.
-A rejected download is treated exactly like a URL that is down.
+RIS routing dumps older than 3 days and RIR delegation files older than 7 are
+rejected too: those are regenerated daily, so an old one means the publisher's
+generator stalled. A rejected download is treated exactly like a URL that is
+down.
 
 **An owned copy of every input.** Each validated input is committed to this
-repository's `state` branch. If every URL for a source fails, the build uses
-that stored copy, for a window set by how fast the data goes stale:
+repository's `state` branch, whose `NOTICE.md` names each input's licence and
+required attribution. If every URL for a source fails, the build uses that
+stored copy, for a window set by how fast the data goes stale:
 
 | Input | Stored copy is used for up to |
 |---|---|
@@ -495,8 +509,9 @@ domain list — stop the build instead, and yesterday's release stays.
 **Day-over-day guard.** The build compares itself with the previous release and
 refuses to publish if `ir` IPv4 addresses fall more than 5 %, `ir` domains more
 than 10 %, or a blocklist more than 60 %. It skips a set whose source list
-changed, and does nothing if the previous release can't be fetched. A manual
-run of the workflow has an `allow_shrink` switch for use after reading why.
+changed, and does nothing if the previous release can't be fetched even after
+retries; the log says why. A manual run of the workflow has an `allow_shrink`
+switch for use after reading why.
 
 **Provenance.** `stats.json` records, for every source, its status (`fresh`,
 `not-modified`, `stale` or `dropped`), the URL it was read from, the sha256 of

@@ -57,8 +57,10 @@ stops, nothing is published and the previous release stays current.
   a Regional Internet Registry delegated it to an organisation registered in
   Iran, adjusted by RIPE NCC RIS routing data, where the most specific route
   wins. If routing would add more than 20 % or remove more than 10 % of the
-  registry's IPv4 addresses, the build fails: that is a leak or a broken dump,
-  not a change in Iran. Without routing data, `ir` is registry-only.
+  registry's addresses, IPv4 or IPv6, the build fails: that is a leak or a
+  broken dump, not a change in Iran. An Iranian prefix under a route that only
+  foreign networks announce is not added, since that is the shape of a hijack.
+  Without routing data, `ir` is registry-only.
 - **Known-good and known-bad probes.** The build requires `2.144.0.0/14` (TCI)
   in the Iranian set and `8.8.8.8` out of it, and refuses a set that is
   implausibly small (`ir` under 1,000 IPv4 prefixes, 100 IPv6 prefixes or 1,000
@@ -69,8 +71,9 @@ stops, nothing is published and the previous release stays current.
 - **Day-over-day guard.** The build refuses to publish if `ir` IPv4 addresses
   fall more than 5 % against the previous release, `ir` domains more than
   10 %, or a blocklist more than 60 %. A set whose source list changed, or a
-  previous release that can't be fetched, skips the comparison. A maintainer
-  can override it with `allow_shrink` after reading why.
+  previous release that can't be fetched after retries, skips the comparison,
+  and the log says why. A maintainer can override it with `allow_shrink` after
+  reading why.
 - **Shared-platform guard.** `verify.py` refuses to publish if a blocklist
   covers a shared platform such as `sites.google.com`, `bit.ly` or `github.io`,
   since a suffix rule there would block every site hosted under it.
