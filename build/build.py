@@ -435,7 +435,11 @@ def build_domain_sets(h: fetch.Harvest) -> tuple[dict[str, DomainSet], dict]:
     return out, daudit
 
 
-def build_dat_files(ctx: BuildContext, ips: dict, doms: dict) -> None:
+def build_dat_files(ctx: BuildContext, ips: dict, doms: dict) -> int:
+    """Write the Xray .dat files; returns the byte size of geosite.dat.
+
+    The size goes into the release notes: jsDelivr serves nothing over 20 MB.
+    """
     geoip = {slug: s.all_networks() for slug, s in ips.items()}
     _write_bin(ctx, "xray/geoip.dat", geodat.encode_geoip(geoip),
                sum(len(v) for v in geoip.values()))
@@ -455,7 +459,8 @@ def build_dat_files(ctx: BuildContext, ips: dict, doms: dict) -> None:
     geosite = {slug: as_domains(d) for slug, d in doms.items()
                if slug != "block-all"}
     geosite["category-ads-all"] = geosite["ads"]
-    _write_bin(ctx, "xray/geosite.dat", geodat.encode_geosite(geosite),
+    geosite_blob = geodat.encode_geosite(geosite)
+    _write_bin(ctx, "xray/geosite.dat", geosite_blob,
                sum(len(v) for v in geosite.values()))
 
     lite_site = {k: geosite[k] for k in ("ir", "ads-ir") if k in geosite}
@@ -474,6 +479,7 @@ def build_dat_files(ctx: BuildContext, ips: dict, doms: dict) -> None:
         open(ctx.path("xray/geoip.dat"), "rb").read())}
     assert check_ip["IR"] == geoip["ir"], "geoip.dat failed round-trip"
     log("  xray .dat round-trip verified")
+    return len(geosite_blob)
 
 
 def _write_bin(ctx: BuildContext, relpath: str, blob: bytes, entries: int) -> None:
@@ -981,7 +987,7 @@ def main() -> None:
         audit["format_profiles"][slug] = used
         if used != "full":
             log(f"  {slug}: '{used}' format profile ({d.total} entries)")
-    build_dat_files(ctx, ips, doms)
+    audit["geosite_dat_bytes"] = build_dat_files(ctx, ips, doms)
     write_configs(ctx, base_url)
     log(f"  {len(ctx.manifest)} files written")
 

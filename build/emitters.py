@@ -112,14 +112,30 @@ def ip_mikrotik(ctx: BuildContext, s: IPSet) -> None:
                     len(nets), s.sources)
 
 
+IPSET_MIN_MAXELEM = 65536  # ipset's own default, so a small set matches an old load
+
+
+def ipset_maxelem(entries: int) -> int:
+    """The next power of two at or above twice the entries, at least 65536.
+
+    A set that outgrows its maxelem makes `ipset restore` fail partway. Twice
+    the entries leaves room to grow, and a power of two changes only when the
+    set doubles, so a daily reload rarely changes the parameters of a set
+    that is already loaded.
+    """
+    return max(IPSET_MIN_MAXELEM, 1 << (2 * entries - 1).bit_length())
+
+
 def ip_ipset(ctx: BuildContext, s: IPSet) -> None:
     lines = []
     if s.v4:
-        lines += [f"create {s.slug}-v4 hash:net family inet -exist",
+        lines += [f"create {s.slug}-v4 hash:net family inet "
+                  f"maxelem {ipset_maxelem(len(s.v4))} -exist",
                   f"flush {s.slug}-v4"]
         lines += [f"add {s.slug}-v4 {n} -exist" for n in s.v4]
     if s.v6:
-        lines += [f"create {s.slug}-v6 hash:net family inet6 -exist",
+        lines += [f"create {s.slug}-v6 hash:net family inet6 "
+                  f"maxelem {ipset_maxelem(len(s.v6))} -exist",
                   f"flush {s.slug}-v6"]
         lines += [f"add {s.slug}-v6 {n} -exist" for n in s.v6]
     write_lines(ctx, f"ipset/{s.slug}.ipset", lines,

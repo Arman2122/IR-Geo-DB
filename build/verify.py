@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Post-build acceptance checks against a produced dist/ tree.
 
-    python3 build/verify.py dist
+    python3 build/verify.py dist [--lkg-dir .lkg]
 
 Separate from the sanity gate in build.py: that one asks whether the data
 looked sane before writing, this re-reads the files from disk and decodes the
@@ -10,6 +10,7 @@ binary formats to check what actually got written. Non-zero exit on failure.
 
 from __future__ import annotations
 
+import argparse
 import ipaddress
 import json
 import os
@@ -19,7 +20,11 @@ import shutil
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import build  # noqa: E402
+import fetch  # noqa: E402
 import geodat  # noqa: E402
+import model  # noqa: E402
+import sources  # noqa: E402
 
 # Addresses that must be classified as Iranian. These are the largest and
 # oldest IR delegations in the registry — /12s and /13s held since 2001-2012 —
@@ -87,7 +92,15 @@ def load_cidrs(path: str) -> list:
 
 
 def main() -> int:
-    dist = sys.argv[1] if len(sys.argv) > 1 else "dist"
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("dist", nargs="?", default="dist",
+                    help="the build output directory (default: dist)")
+    ap.add_argument("--lkg-dir", default=".lkg",
+                    help="the state store the build read and wrote, for the "
+                         "PSL re-check (default: .lkg)")
+    args = ap.parse_args()
+    dist = args.dist
     print(f"verifying {dist}/\n")
 
     # ---------------------------------------------------------- IP accuracy
@@ -202,6 +215,18 @@ def main() -> int:
                              for i in range(len(s.split(".")))))
         check(not hits, f"text/{fn}: blocks no shared platform ({hits})")
 
+    # a bogon in a threat-IP set would block a user's own LAN or a resolver
+    private = [ipaddress.ip_network(p) for p in build.PRIVATE_RANGES]
+    for fn in ("malware-ipv4.txt", "malware-ipv6.txt"):
+        path = os.path.join(text_dir, fn)
+        if not os.path.exists(path):
+            continue
+        nets = load_cidrs(path)
+        hits = sorted({str(n) for n in nets for p in private
+                       if n.version == p.version and n.overlaps(p)})
+        check(not hits, f"text/{fn}: {len(nets)} prefixes, none overlap a "
+                        f"private or reserved range ({hits[:3]})")
+
     # ------------------------------------------------------------ Xray .dat
     print("\nXray data files")
     gi = os.path.join(dist, "xray", "geoip.dat")
@@ -218,6 +243,8 @@ def main() -> int:
     check("IR" in scats, f"geosite.dat has an IR category ({len(scats)} categories)")
     ir_vals = {v for t, v in scats["IR"]}
     check("ir" in ir_vals, "geosite.dat IR contains the collapsed 'ir' TLD rule")
+    check("xn--mgba3a4f16a" in ir_vals,
+          "geosite.dat IR contains the collapsed 'xn--mgba3a4f16a' TLD rule")
     check(not any(v.endswith(".ir") for v in ir_vals),
           "geosite.dat IR carries no redundant *.ir entries")
     types = {t for t, _ in scats["IR"]}
@@ -288,6 +315,40 @@ def main() -> int:
     adds = [l for l in lines if l.startswith("add address=")]
     check(len(adds) == len(v4), f"reset script has {len(adds)} adds (expected {len(v4)})")
     check(all(" list=IR" in l for l in adds), "every add targets the IR list")
+
+    # ------------------------------------------------------ domain filters
+    print("\nIranian domain filters")
+    stored_psl = fetch.StateStore(args.lkg_dir).load("psl")
+    if stored_psl is None:
+        print(f"  skip  PSL re-check: no stored PSL in {args.lkg_dir}")
+    else:
+        # the build filters before it collapses and prunes, so a name that
+        # survives into the output and is still a shared-hosting suffix means
+        # the filter missed it. Every name is treated as suffix-capable.
+        psl_rules, _meta = stored_psl
+        with open(os.path.join(text_dir, "ir-domains.txt"),
+                  encoding="utf-8") as fh:
+            ir_names = {l.strip() for l in fh
+                        if l.strip() and not l.startswith("#")}
+        kept, removed = model.psl_filter(ir_names, psl_rules,
+                                         keep=build.IR_PLATFORM_SUFFIXES)
+        check(removed == 0,
+              f"text/ir-domains.txt: {len(ir_names)} names, none a PSL "
+              f"shared-hosting suffix ({sorted(ir_names - kept)[:5]})")
+
+    # ----------------------------------------------------------- provenance
+    print("\nProvenance")
+    with open(os.path.join(dist, "stats.json"), encoding="utf-8") as fh:
+        stats = json.load(fh)
+    recorded = stats.get("sources", {})
+    missing = [src.key for src in sources.SOURCES if src.key not in recorded]
+    check(not missing, f"stats.json has a sources entry for each of the "
+                       f"{len(sources.SOURCES)} registry keys (missing {missing})")
+    providers = stats.get("audit", {}).get("providers", {})
+    for name in ("ArvanCloud", "Sotoon"):
+        addresses = providers.get(name, {}).get("addresses", 0)
+        check(addresses > 0,
+              f"audit.providers: {name} has {addresses} IPv4 addresses in ir-cdn")
 
     # ------------------------------------------------------------ integrity
     print("\nIntegrity")

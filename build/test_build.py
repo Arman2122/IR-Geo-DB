@@ -26,8 +26,10 @@ from testkit import done, eq, ok  # noqa: E402
 import bgp  # noqa: E402
 import build  # noqa: E402
 import fetch  # noqa: E402
+import release_notes  # noqa: E402
 import sources  # noqa: E402
-from emitters import BuildContext  # noqa: E402
+from emitters import BuildContext, ip_ipset  # noqa: E402
+from model import IPSet  # noqa: E402
 
 
 def net(s: str):
@@ -549,5 +551,196 @@ _, text = quiet(build.enforce_shrink_limits, ips, doms, audit, bigger, True)
 eq(len([ln for ln in text.splitlines() if ln.startswith("  warn ")]), 2,
    "--allow-shrink logs each problem as '  warn' and continues")
 ok("FAIL" not in text, "--allow-shrink logs no FAIL")
+
+# ------------------------------------------------------------ release notes
+
+FOOTER = "Contains RIPE NCC RIS data © RIPE NCC."
+BGP = {"applied": True, "ir_asns": 130, "ris_generated": "2026-10-23",
+       "registry_addresses": 11_000_000, "added_prefixes": 12,
+       "added_addresses": 4096, "removed_prefixes": 3, "removed_addresses": 768}
+
+
+def notes(**changes) -> str:
+    """render() of a small current-schema stats dict, with fields replaced."""
+    st = {"version": "v1", "generated": "2026-10-23 00:00:00 UTC",
+          "ip_sets": {"ir": {"ipv4": 3, "ipv6": 2},
+                      "ir-cdn": {"ipv4": 1, "ipv6": 1}},
+          "domain_sets": {"ir": {"suffix": 5, "full": 1}},
+          "sources": {"a": {"status": "fresh", "stale_days": 0.0},
+                      "b": {"status": "not-modified", "stale_days": 0.0}},
+          "audit": {}}
+    st.update(changes)
+    return release_notes.render(st, "v1")
+
+
+def stale_x(**fields) -> dict:
+    return {"x": {"status": "stale", "served_by": "state", "stale_days": 2.04,
+                  "error": "primary: HTTP 503", **fields}}
+
+
+text = notes(sources=stale_x())
+ok("| `x` | stale |" in text, "a stale source gets a Source health row")
+ok("\n## Source health\n" in text, "the heading is exactly '## Source health'")
+ok("| Source | Status | Served by | Age (days) | Error |" in text,
+   "the Source health columns")
+ok("| `x` | stale | state | 2.0 | primary: HTTP 503 |" in text,
+   "the row carries served_by, the age to 1 decimal and the error")
+ok("Degraded sources" not in text, "the old Degraded sources section is gone")
+ok("Source health" not in notes(), "all fresh or not-modified: no Source health")
+ok("Source health" not in notes(sources={}), "no sources at all: no Source health")
+text = notes(sources={"x": {"status": "dropped", "served_by": "",
+                            "stale_days": 0.0, "error": "nothing stored"}})
+ok("| `x` | dropped | — | — | nothing stored |" in text,
+   "dropped with nothing stored: no served_by, no age")
+text = notes(sources=stale_x(status="dropped", served_by="", stale_days=120.0))
+ok("| `x` | dropped | — | 120.0 |" in text,
+   "dropped with an over-age stored copy shows that age")
+text = notes(sources=stale_x(error="a|b\nc\r\nd"))
+row = next(ln for ln in text.splitlines() if ln.startswith("| `x`"))
+ok(row.endswith("| a\\|b c d |"), "| is escaped and newlines become spaces")
+eq(row.count("|") - row.count("\\|"), 6, "an escaped | adds no column")
+text = notes(sources=stale_x(error="a|b\nc" + "z" * 200))
+row = next(ln for ln in text.splitlines() if ln.startswith("| `x`"))
+eq(row.split(" | ")[-1], "a\\|b c" + "z" * 115 + " |",
+   "the error is cut at 120 characters, then escaped")
+text = notes(sources={**stale_x(), "y": {"status": "stale", "stale_days": 9.96}})
+ok("| `y` | stale | — | 10.0 |  |" in text,
+   "a missing served_by is a dash and a missing error is blank")
+text = notes(sources={"k": {"status": "fresh"}, **stale_x(),
+                      "m": {"status": "not-modified"}})
+ok("| `k`" not in text and "| `m`" not in text,
+   "fresh and not-modified sources stay out of the table")
+
+for size, warned in ((21_000_000, True), (20_000_000, True),
+                     (19_999_999, False)):
+    eq("> **Warning:** geosite.dat is" in
+       notes(audit={"geosite_dat_bytes": size}), warned,
+       f"geosite.dat of {size} bytes: warning is {warned}")
+ok("> **Warning:** geosite.dat is 21.0 MB — over jsDelivr's 20 MB limit, "
+   "so the CDN mirror will not serve it." in
+   notes(audit={"geosite_dat_bytes": 21_000_000}), "the warning line")
+ok("geosite.dat is 20.5 MB" in notes(audit={"geosite_dat_bytes": 20_460_000}),
+   "MB is bytes / 1e6, to 1 decimal")
+
+# provenance: registry + BGP
+text = notes(audit={"bgp": BGP})
+ok("added 4,096 addresses" in text and "removed 768 addresses" in text and
+   "130 Iranian ASNs" in text,
+   "an applied BGP adjustment quotes the added and removed addresses")
+ok("registry-only" not in text, "applied: not described as registry-only")
+text = notes(audit={"bgp": {**BGP, "applied": False}})
+ok("routing data was unavailable" in text and "registry-only" in text,
+   "no BGP: routing data unavailable, so registry-only")
+ok("registry-only" in notes(), "no audit.bgp at all: registry-only")
+ok("Cloudflare, AWS, Google, Fastly and G-Core ranges subtracted (7 addresses)"
+   in notes(audit={"foreign_cloud_excluded": True,
+                   "foreign_cloud_overlap_addresses": 7}),
+   "the cloud exclusion line is kept")
+text = notes(audit={"providers": {"ArvanCloud": {"addresses": 12_345},
+                                  "Sotoon": {"addresses": 0}}})
+ok("ArvanCloud 12,345" in text and "Sotoon 0" in text,
+   "a provider line lists each provider and its addresses")
+ok("ArvanCloud" not in notes(), "no providers audit: no provider line")
+
+# attribution footer
+eq(notes(audit={"bgp": BGP}).rstrip().splitlines()[-1], FOOTER,
+   "BGP applied: the footer is the last line")
+ok(FOOTER in notes(sources={"ris-v4": {"status": "stale", "stale_days": 1.0}}),
+   "a stale RIS source brings the footer")
+ok(FOOTER in notes(sources={"ris-v6": {"status": "not-modified"}}),
+   "a not-modified RIS source brings the footer")
+ok(FOOTER not in notes(sources={"ris-v4": {"status": "dropped"},
+                                "ris-v6": {"status": "dropped"}},
+                       audit={"bgp": {**BGP, "applied": False}}),
+   "every RIS source dropped and no BGP: no footer")
+ok(FOOTER not in notes(), "no RIS at all: no footer")
+text = notes(sources=stale_x(), audit={"bgp": BGP})
+section = text.split("\n## Source health\n")[1].split("\n## ")[0]
+ok("| `x` |" in section and FOOTER not in section,
+   "an extracted Source health section ends before the footer")
+
+# an old-schema stats.json: no sources, bgp, providers or dat size
+OLD = {"version": "v2026.08.03", "generated": "2026-08-03 00:00:00 UTC",
+       "ip_sets": {"ir": {"ipv4": 3, "ipv6": 2}, "ir-cdn": {"ipv4": 1, "ipv6": 1},
+                   "malware": {"ipv4": 9, "ipv6": 0}},
+       "domain_sets": {"ir": {"suffix": 5, "full": 1},
+                       "ads": {"suffix": 7, "full": 0}},
+       "sources_ok": ["rir-ripencc"], "sources_failed": {"x": "boom"},
+       "audit": {"crosscheck_ipverse": {"exact_prefix_matches": 1,
+                                        "address_coverage_ratio": 1.0},
+                 "foreign_cloud_excluded": True}}
+text = release_notes.render(OLD, "v2026.08.03")
+ok(all(h in text for h in ("## Stable URLs", "## Contents",
+                           "## Iranian IP provenance", "## Quick start",
+                           "## Verifying")),
+   "an old-schema stats dict renders every static section")
+ok("Source health" not in text and "Warning" not in text and FOOTER not in text,
+   "...and none of the new ones")
+ok("## Contents" in release_notes.render({"ip_sets": {}, "domain_sets": {}},
+                                         "v1"),
+   "a stats dict with no sets renders too")
+
+# the real thing: the stats write_metadata produced above
+text = release_notes.render(stats, "v2026.10.23")
+ok("| `ris-v4` | stale | state | 2.0 | primary: HTTP 503 |" in text,
+   "the stale RIS source of the real stats is in the table")
+ok("ArvanCloud" in text and "Sotoon" in text, "the real providers audit is quoted")
+ok(FOOTER in text, "real stats: RIS in use, so the footer is present")
+
+# ------------------------------------------------------------ ipset sizing
+
+
+def ipset_lines(v4=(), v6=()) -> list[str]:
+    with tempfile.TemporaryDirectory() as tmp:
+        c = BuildContext(outdir=tmp, timestamp="2026-10-23 00:00:00 UTC",
+                         version="v1")
+        ip_ipset(c, IPSet(slug="t", title="T", v4=list(v4), v6=list(v6)))
+        with open(os.path.join(tmp, "ipset", "t.ipset"), encoding="utf-8") as fh:
+            return fh.read().splitlines()
+
+
+def create_line(lines, family):
+    return next(ln for ln in lines if ln.startswith(f"create t-{family} "))
+
+
+def v4_nets(count):
+    return [ipaddress.IPv4Network((i << 8, 24)) for i in range(count)]
+
+
+lines = ipset_lines(v4=v4_nets(40_000))
+eq(create_line(lines, "v4"),
+   "create t-v4 hash:net family inet maxelem 131072 -exist",
+   "40,000 entries: maxelem 131072")
+eq(len([ln for ln in lines if not ln.startswith("#")]), 2 + 40_000,
+   "...with one create, one flush and the 40,000 adds")
+eq(create_line(ipset_lines(v4=v4_nets(10)), "v4"),
+   "create t-v4 hash:net family inet maxelem 65536 -exist",
+   "10 entries: maxelem 65536, the minimum")
+for count, want in ((1, 65536), (32_768, 65536), (32_769, 131072),
+                    (65_536, 131072), (65_537, 262144)):
+    ok(f" maxelem {want} -exist" in create_line(
+        ipset_lines(v4=v4_nets(count)), "v4"),
+       f"{count} entries: maxelem {want}")
+v6 = [ipaddress.IPv6Network(((0x20010DB8 << 96) | (i << 64), 64))
+      for i in range(10)]
+lines = ipset_lines(v4=v4_nets(40_000), v6=v6)
+eq(create_line(lines, "v4"),
+   "create t-v4 hash:net family inet maxelem 131072 -exist",
+   "each family is sized on its own entries: v4")
+eq(create_line(lines, "v6"),
+   "create t-v6 hash:net family inet6 maxelem 65536 -exist",
+   "each family is sized on its own entries: v6")
+ok(not any(ln.startswith("create t-v6") for ln in ipset_lines(v4=v4_nets(1))),
+   "an empty family gets no create line")
+
+# ------------------------------------------- geosite.dat size for the report
+
+with tempfile.TemporaryDirectory() as tmp:
+    c = BuildContext(outdir=tmp, timestamp="2026-10-23 00:00:00 UTC",
+                     version="v1")
+    size, _ = quiet(build.build_dat_files, c, ips, doms)
+    eq(size, os.path.getsize(os.path.join(tmp, "xray", "geosite.dat")),
+       "build_dat_files returns the byte size of xray/geosite.dat")
+    ok(size > 0, "...and it is not empty")
 
 done()
