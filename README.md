@@ -86,13 +86,24 @@ On phones, `geoip-lite.dat` and `geosite-lite.dat` carry only the Iranian sets.
       "download_detour": "direct", "update_interval": "1d" },
     { "type": "remote", "tag": "geoip-ir", "format": "binary",
       "url": "https://raw.githubusercontent.com/Arman2122/IR-Geo-DB/dist/sing-box/rule-set/geoip-ir.srs",
+      "download_detour": "direct", "update_interval": "1d" },
+    { "type": "remote", "tag": "geosite-ads", "format": "binary",
+      "url": "https://raw.githubusercontent.com/Arman2122/IR-Geo-DB/dist/sing-box/rule-set/geosite-ads.srs",
+      "download_detour": "direct", "update_interval": "1d" },
+    { "type": "remote", "tag": "geosite-malware", "format": "binary",
+      "url": "https://raw.githubusercontent.com/Arman2122/IR-Geo-DB/dist/sing-box/rule-set/geosite-malware.srs",
+      "download_detour": "direct", "update_interval": "1d" },
+    { "type": "remote", "tag": "geosite-phishing", "format": "binary",
+      "url": "https://raw.githubusercontent.com/Arman2122/IR-Geo-DB/dist/sing-box/rule-set/geosite-phishing.srs",
       "download_detour": "direct", "update_interval": "1d" }
   ]
 }
 ```
 
 Rule-sets are compiled at format version 1, so they load on sing-box 1.8 and
-later. The JSON sources are in `sing-box/source/`.
+later; the `"action": "reject"` rule above needs sing-box 1.11 or later. The
+same block ships as `sing-box/config-snippet.json`, and the JSON sources are
+in `sing-box/source/`.
 </details>
 
 <details>
@@ -278,8 +289,8 @@ Live counts for the current build are in
 | `text/` | plain CIDR / domain per line |
 
 Sets past 100,000 entries skip the most verbose formats — RPZ writes two lines
-per domain, Unbound a stanza each. `manifest.json` records which profile each
-set used.
+per domain, Unbound a stanza each. `stats.json` records which profile each
+set used, under `audit.format_profiles`.
 
 ## How an address is decided to be Iranian
 
@@ -322,9 +333,8 @@ as `8.8.8.8` turns up inside it.
 | [PersianBlocker](https://github.com/MasterKia/PersianBlocker) | MasterKia | AGPL-3.0 | Persian ads |
 | [HaGeZi DNS Blocklists](https://github.com/hagezi/dns-blocklists) | HaGeZi | GPL-3.0 | ads / tracking |
 | [AdGuard DNS filter](https://github.com/AdguardTeam/AdGuardSDNSFilter) | AdGuard | GPL-3.0 | ads / tracking |
-| [URLhaus](https://urlhaus.abuse.ch) | abuse.ch | CC0 | malware |
+| [URLhaus](https://urlhaus.abuse.ch) via [malware-filter](https://gitlab.com/malware-filter/urlhaus-filter) | abuse.ch, curbengh | CC0 / MIT | malware |
 | [Feodo Tracker](https://feodotracker.abuse.ch/blocklist/) | abuse.ch | CC0 | botnet C2 IPs |
-
 | [Phishing.Database](https://github.com/mitchellkrogza/Phishing.Database) | mitchellkrogza | MIT | phishing |
 | [NoCoin](https://github.com/hoshsadiq/adblock-nocoin-list) | hoshsadiq | MIT | cryptominers |
 | [StevenBlack hosts](https://github.com/StevenBlack/hosts) | StevenBlack | MIT | adult / gambling |

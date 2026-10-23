@@ -39,30 +39,37 @@ jobs:
           echo "version=v$(date -u +%Y.%m.%d)" >> "$GITHUB_OUTPUT"
           echo "date=$(date -u '+%Y-%m-%d %H:%M UTC')" >> "$GITHUB_OUTPUT"
 
+      - name: Unit tests
+        run: python3 build/test_units.py
+
+      # The compilers are pinned and checksummed rather than fetched as
+      # "latest": they run in a job that can write to the repository, and an
+      # upstream release that is mid-upload or changes behaviour should not
+      # take the daily build down. Dependabot cannot see these; bump them by
+      # hand, taking the sha256 from the asset's "digest" in the releases API.
       - name: Install sing-box
+        env:
+          VER: "1.14.0"
+          SHA256: 2375de6999f4f56ab46b4fc5ddf26a6aba1d3e61a0f4e7ddec2f4690457d5f63
         run: |
           set -euo pipefail
-          tag=$(curl -sfL --retry 3 \
-            https://api.github.com/repos/SagerNet/sing-box/releases/latest \
-            | jq -r .tag_name)
-          num=${tag#v}
-          echo "sing-box $tag"
-          curl -sfL --retry 3 -o sb.tar.gz \
-            "https://github.com/SagerNet/sing-box/releases/download/${tag}/sing-box-${num}-linux-amd64.tar.gz"
+          curl -sfL --retry 5 --retry-all-errors -o sb.tar.gz \
+            "https://github.com/SagerNet/sing-box/releases/download/v${VER}/sing-box-${VER}-linux-amd64.tar.gz"
+          echo "${SHA256}  sb.tar.gz" | sha256sum -c -
           tar xzf sb.tar.gz
-          sudo install -m755 "sing-box-${num}-linux-amd64/sing-box" /usr/local/bin/sing-box
-          rm -rf sb.tar.gz "sing-box-${num}-linux-amd64"
+          sudo install -m755 "sing-box-${VER}-linux-amd64/sing-box" /usr/local/bin/sing-box
+          rm -rf sb.tar.gz "sing-box-${VER}-linux-amd64"
           sing-box version
 
       - name: Install mihomo
+        env:
+          VER: "v1.19.30"
+          SHA256: cf06ce2c7d1421bdbda14ee4a5b6046672dc35ebf8eecd8e77504ec3c0ed9a84
         run: |
           set -euo pipefail
-          tag=$(curl -sfL --retry 3 \
-            https://api.github.com/repos/MetaCubeX/mihomo/releases/latest \
-            | jq -r .tag_name)
-          echo "mihomo $tag"
-          curl -sfL --retry 3 -o mihomo.gz \
-            "https://github.com/MetaCubeX/mihomo/releases/download/${tag}/mihomo-linux-amd64-${tag}.gz"
+          curl -sfL --retry 5 --retry-all-errors -o mihomo.gz \
+            "https://github.com/MetaCubeX/mihomo/releases/download/${VER}/mihomo-linux-amd64-${VER}.gz"
+          echo "${SHA256}  mihomo.gz" | sha256sum -c -
           gunzip -f mihomo.gz
           sudo install -m755 mihomo /usr/local/bin/mihomo
           rm -f mihomo
@@ -83,6 +90,8 @@ jobs:
       - name: Job summary
         if: always()
         run: |
+          # a build that died early has no stats to summarise
+          [ -f dist/stats.json ] || exit 0
           {
             echo "## ${{ steps.meta.outputs.version }}"
             echo ""

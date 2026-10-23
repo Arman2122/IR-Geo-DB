@@ -402,11 +402,9 @@ def emit_domainset(ctx: BuildContext, d: DomainSet, role: str,
         profile = "large" if d.total >= LARGE_SET else "full"
 
     if profile == "aggregate":
+        # dom_hosts also writes the RouterOS adlist
         for fn in AGGREGATE_EMITTERS:
             fn(ctx, d)
-        body = [f"0.0.0.0 {n}" for n in d.plain_domains()]
-        write_lines(ctx, f"mikrotik/adlist-{d.slug}.txt", body,
-                    f"{d.title} — RouterOS adlist", len(body), d.sources)
         return profile
 
     for fn in DOMAIN_EMITTERS_COMMON:

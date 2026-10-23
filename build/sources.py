@@ -161,10 +161,16 @@ SOURCES: list[Source] = [
            url="https://feodotracker.abuse.ch/downloads/ipblocklist.txt"),
 
     # ---- security
-    Source(key="malware-urlhaus", name="URLhaus", parser="hosts", kind="domain",
-           tier="blocklist", license="CC0", optional=True,
-           homepage="https://urlhaus.abuse.ch",
-           url="https://urlhaus.abuse.ch/downloads/hostfile/"),
+    # abuse.ch retired the unauthenticated URLhaus downloads (hostfile, rpz,
+    # text_online all answer 410 Gone). malware-filter rebuilds the host list
+    # from the authenticated URLhaus API twice a day and drops popular domains
+    # that only host the occasional malicious file, which a raw URL feed
+    # would otherwise turn into whole-domain blocks.
+    Source(key="malware-urlhaus", name="URLhaus via malware-filter",
+           parser="hosts", kind="domain", tier="blocklist",
+           license="CC0 / MIT", optional=True,
+           homepage="https://gitlab.com/malware-filter/urlhaus-filter",
+           url="https://malware-filter.gitlab.io/malware-filter/urlhaus-filter-hosts.txt"),
     Source(key="phishing-db", name="Phishing.Database", parser="domains",
            kind="domain", tier="blocklist", license="MIT", optional=True,
            homepage="https://github.com/mitchellkrogza/Phishing.Database",

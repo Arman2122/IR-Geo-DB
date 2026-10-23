@@ -200,10 +200,12 @@ def main() -> int:
     print("\nsing-box rule-sets")
     srs_dir = os.path.join(dist, "sing-box", "rule-set")
     exe = os.environ.get("SING_BOX") or shutil.which("sing-box")
-    if not os.path.isdir(srs_dir):
-        check(False, "sing-box/rule-set/ exists")
-    elif not exe:
+    # without the binary the build skips .srs entirely, so there is no
+    # directory to look for
+    if not exe:
         print("  skip  sing-box binary unavailable, cannot decompile")
+    elif not os.path.isdir(srs_dir):
+        check(False, "sing-box/rule-set/ exists")
     else:
         srs = os.path.join(srs_dir, "geoip-ir.srs")
         out = os.path.join(dist, "_verify-geoip-ir.json")
@@ -240,7 +242,8 @@ def main() -> int:
             ok = os.path.exists(path) and os.path.getsize(path) > 100
             check(ok, f"mihomo/{want} exists and is non-trivial")
         # .mrs is zstd-framed; check the magic rather than trusting the size
-        head = open(os.path.join(mrs_dir, "ir-ip.mrs"), "rb").read(4)
+        path = os.path.join(mrs_dir, "ir-ip.mrs")
+        head = open(path, "rb").read(4) if os.path.exists(path) else b""
         check(head == b"\x28\xb5\x2f\xfd", f"ir-ip.mrs has a zstd frame header ({head.hex()})")
     else:
         print("  skip  mihomo/ not built")
@@ -268,6 +271,15 @@ def main() -> int:
     missing = [r["file"] for r in manifest["files"]
                if not os.path.exists(os.path.join(dist, r["file"]))]
     check(not missing, f"every manifest entry exists on disk ({len(missing)} missing)")
+    paths = [r["file"] for r in manifest["files"]]
+    dupes = sorted({p for p in paths if paths.count(p) > 1})
+    check(not dupes, f"no file is listed twice in the manifest ({dupes})")
+    # an emitted file always carries at least a header, so zero bytes means a
+    # crashed compiler, and GitHub refuses to upload one as a release asset
+    empty = [os.path.relpath(os.path.join(root, f), dist).replace(os.sep, "/")
+             for root, _dirs, files in os.walk(dist) for f in files
+             if os.path.getsize(os.path.join(root, f)) == 0]
+    check(not empty, f"no zero-byte files ({empty})")
 
     print(f"\n{checks - len(failures)}/{checks} checks passed")
     if failures:

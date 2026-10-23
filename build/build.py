@@ -182,7 +182,7 @@ def build_domain_sets(h: sources.Harvest) -> dict[str, DomainSet]:
 
     out["malware"] = make_domainset(
         "malware", DOMAIN_ROLES["malware"][0], suffix=h.get("malware-urlhaus"),
-        sources=["URLhaus / abuse.ch (CC0)"])
+        sources=["URLhaus / abuse.ch via malware-filter (CC0)"])
 
     out["phishing"] = make_domainset(
         "phishing", DOMAIN_ROLES["phishing"][0], suffix=h.get("phishing-db"),
@@ -301,16 +301,26 @@ def compile_mihomo(ctx: BuildContext, require: bool) -> int:
     for name in sorted(os.listdir(clashdir)):
         if not name.endswith(".list"):
             continue
+        src = os.path.join(clashdir, name)
+        # mihomo panics with "empty rule" on a list with no entries, which
+        # threat feeds such as Feodo Tracker legitimately produce some days
+        with open(src, encoding="utf-8") as fh:
+            if not any(ln.strip() and not ln.startswith("#") for ln in fh):
+                log(f"  skip {name}: no entries, no .mrs this build")
+                continue
         # only domain and ipcidr behaviours have an .mrs representation
         behavior = "ipcidr" if name.endswith("-ip.list") else "domain"
         dst = ctx.path(f"mihomo/{name[:-5]}.mrs")
         res = subprocess.run(
-            [exe, "convert-ruleset", behavior, "text",
-             os.path.join(clashdir, name), dst],
+            [exe, "convert-ruleset", behavior, "text", src, dst],
             capture_output=True, text=True)
         if res.returncode != 0:
             log(f"  warn: mihomo failed on {name}: "
                 f"{(res.stderr or res.stdout).strip()[:200]}")
+            # a crashed convert can leave a partial file, and an empty
+            # release asset fails the whole upload
+            if os.path.exists(dst):
+                os.remove(dst)
             continue
         ctx.record(f"mihomo/{name[:-5]}.mrs", 0)
         made += 1
@@ -376,9 +386,16 @@ def write_configs(ctx: BuildContext, base_url: str) -> None:
     emitters.write_lines(ctx, "clash/config-snippet.yaml", clash_yaml,
                          "Mihomo / Clash.Meta configuration snippet", 5, [])
 
+    # The scheduler's policy must cover the script's, or RouterOS refuses to
+    # run it ("not enough permissions"), so both carry the same list.
+    policy = "ftp,read,write,test,policy"
     mikrotik = [
+        # pasting the installer again replaces it instead of failing on
+        # "already have script with such name"
+        "/system scheduler remove [find name=IR-Geo-Schedule]",
+        "/system script remove [find name=IR-Geo-Update]",
         "/system script",
-        "add name=IR-Geo-Update policy=ftp,read,write,test,policy source={",
+        f"add name=IR-Geo-Update policy={policy} source={{",
         f':local url "{base_url}/mikrotik/ir-ipv4-reset.rsc"',
         ':do { /file remove [find name="ir-geo.rsc"] } on-error={}',
         ':do { /tool fetch url=$url mode=https dst-path="ir-geo.rsc" } on-error={',
@@ -397,7 +414,7 @@ def write_configs(ctx: BuildContext, base_url: str) -> None:
         "",
         "/system scheduler",
         "add name=IR-Geo-Schedule interval=1d start-time=04:00:00 \\",
-        "    on-event=IR-Geo-Update policy=ftp,read,write,test",
+        f"    on-event=IR-Geo-Update policy={policy}",
     ]
     emitters.write_lines(ctx, "mikrotik/auto-update.rsc", mikrotik,
                          "RouterOS self-updating installer", 1, [])
@@ -484,6 +501,11 @@ def stage_release(ctx: BuildContext, outdir_parent: str) -> str:
             continue
         for name in sorted(os.listdir(src_dir)):
             if not fnmatch.fnmatch(name, pattern):
+                continue
+            # GitHub rejects a zero-byte asset with "Bad Content-Length" and
+            # fails the release; verify.py already refuses to pass one
+            if os.path.getsize(os.path.join(src_dir, name)) == 0:
+                log(f"  skip {subdir}/{name}: empty file not uploaded")
                 continue
             flat = prefix + name
             if flat in seen:
@@ -600,9 +622,11 @@ def main() -> None:
     log("\n[5/7] emitting formats")
     for slug, s in ips.items():
         emitters.emit_ipset(ctx, s, IP_ROLES[slug][1])
+    audit["format_profiles"] = {}
     for slug, d in doms.items():
         profile = "aggregate" if slug == "block-all" else "auto"
         used = emitters.emit_domainset(ctx, d, DOMAIN_ROLES[slug][1], profile)
+        audit["format_profiles"][slug] = used
         if used != "full":
             log(f"  {slug}: '{used}' format profile ({d.total} entries)")
     build_dat_files(ctx, ips, doms)
