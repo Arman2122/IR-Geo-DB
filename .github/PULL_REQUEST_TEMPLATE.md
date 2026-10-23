@@ -4,7 +4,7 @@
 
 ## Checks
 
-- [ ] `for t in build/test_*.py; do python3 "$t" || exit 1; done` passes
+- [ ] `( for t in build/test_*.py; do python3 "$t" || exit 1; done )` passes
 - [ ] `python3 build/geodat.py` passes
 - [ ] A full build followed by `python3 build/verify.py dist` passes
 

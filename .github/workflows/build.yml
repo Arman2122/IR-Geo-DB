@@ -249,7 +249,8 @@ jobs:
               "https://purge.jsdelivr.net/gh/${GITHUB_REPOSITORY}@dist/$1" || true)
             echo "  $code  $1"
           }
-          for f in xray/geoip.dat xray/geoip-lite.dat xray/geosite-lite.dat \
+          for f in xray/geoip.dat xray/geoip-lite.dat xray/geosite.dat \
+                   xray/geosite-lite.dat xray/geosite-security.dat \
                    manifest.json stats.json SHA256SUMS; do purge "$f"; done
           for s in ir ads ads-ir malware phishing cryptominers nsfw; do
             purge "sing-box/rule-set/geosite-${s}.srs"

@@ -47,7 +47,7 @@ That is expected, not a bug.
 
 ```bash
 git clone https://github.com/Arman2122/IR-Geo-DB && cd IR-Geo-DB
-for t in build/test_*.py; do python3 "$t" || exit 1; done   # offline, fast
+( for t in build/test_*.py; do python3 "$t" || exit 1; done )   # offline, fast
 python3 build/geodat.py         # protobuf round-trip self-test
 python3 build/build.py --outdir dist --cache .cache
 python3 build/verify.py dist
@@ -135,7 +135,7 @@ different from what the source said.
 
 ### Before opening a PR
 
-- `for t in build/test_*.py; do python3 "$t" || exit 1; done` passes
+- `( for t in build/test_*.py; do python3 "$t" || exit 1; done )` passes
 - `python3 build/geodat.py` passes
 - A full build followed by `python3 build/verify.py dist` passes
 

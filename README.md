@@ -547,7 +547,7 @@ fails falls back to its stored copy, and the release notes say so.
 
 ```bash
 git clone https://github.com/Arman2122/IR-Geo-DB && cd IR-Geo-DB
-for t in build/test_*.py; do python3 "$t" || exit 1; done   # offline tests
+( for t in build/test_*.py; do python3 "$t" || exit 1; done )   # offline tests
 python3 build/build.py --outdir dist --cache .cache
 python3 build/verify.py dist
 ```
