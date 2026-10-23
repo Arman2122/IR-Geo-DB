@@ -141,12 +141,26 @@ def _nft_elements(nets, indent="      ") -> list[str]:
 
 
 def ip_nftables(ctx: BuildContext, s: IPSet) -> None:
+    """One file is one `nft -f` transaction, so a reload replaces each set.
+
+    Each set is declared (a no-op once it exists) and flushed, then filled.
+    `delete table` would also clear stale prefixes, but it would break any
+    rule the user has pointed at these sets. The split is for old nft,
+    checked down to 0.9.3: 0.9.x loses track of a set declared inside a
+    `table {}` block when the table already exists, so the flush fails or
+    crashes; and 0.9.3 rejects `add element` ranges that overlap the
+    contents being flushed, so the elements go in the block.
+    """
     name = s.slug.replace("-", "_")
-    lines = ["table inet geo {"]
-    for ver, nets, typ in (("v4", s.v4, "ipv4_addr"), ("v6", s.v6, "ipv6_addr")):
-        if not nets:
-            continue
-        lines += [f"  set {name}_{ver} {{", f"    type {typ}",
+    sets = [(f"{name}_{ver}", nets, typ) for ver, nets, typ in
+            (("v4", s.v4, "ipv4_addr"), ("v6", s.v6, "ipv6_addr")) if nets]
+    lines = ["add table inet geo"]
+    lines += [f"add set inet geo {setname} {{ type {typ}; flags interval; auto-merge; }}"
+              for setname, _, typ in sets]
+    lines += [f"flush set inet geo {setname}" for setname, _, _ in sets]
+    lines.append("table inet geo {")
+    for setname, nets, typ in sets:
+        lines += [f"  set {setname} {{", f"    type {typ}",
                   "    flags interval", "    auto-merge", "    elements = {"]
         lines += _nft_elements(nets)
         lines += ["    }", "  }"]

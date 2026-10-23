@@ -15,14 +15,17 @@ from __future__ import annotations
 import ipaddress
 import os
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import emitters  # noqa: E402
 import geodat  # noqa: E402
 import sources  # noqa: E402
 from build import exclude_networks  # noqa: E402
-from model import (clean_domain, from_singbox_rules, make_domainset,  # noqa: E402
-                   parse_networks, prune_covered, range_to_cidrs)
+from model import (IPSet, clean_domain, from_singbox_rules,  # noqa: E402
+                   make_domainset, parse_networks, prune_covered,
+                   range_to_cidrs)
 
 passed = failed = 0
 
@@ -227,6 +230,51 @@ blob = geodat.encode_geoip({"ir": nets("2.144.0.0/14", "2001:790::/32")})
 back = geodat.decode_geoip(blob)
 eq([str(n) for n in back[0].networks], ["2.144.0.0/14", "2001:790::/32"],
    "geoip round-trips both address families")
+
+
+# ------------------------------------------------------------- nftables
+
+# Users re-run `nft -f` to update. If a set is only added to, a prefix that
+# leaves the upstream list stays in the live set for good — so each set has
+# to be flushed before its elements, inside the same file (one transaction).
+
+
+def emit_nft(s: IPSet) -> list[str]:
+    with tempfile.TemporaryDirectory() as tmp:
+        emitters.ip_nftables(emitters.BuildContext(tmp, "t", "v"), s)
+        with open(os.path.join(tmp, "nftables", f"{s.slug}.nft"),
+                  encoding="utf-8") as fh:
+            return fh.read().splitlines()
+
+
+v4s = nets(*[f"10.{i}.0.0/16" for i in range(9)])  # 9 wraps past one line
+v6s = nets("2001:db8::/32", "2001:db9::/32")
+nft = [ln for ln in emit_nft(IPSet("ir-x", "t", v4=v4s, v6=v6s))
+       if not ln.startswith("#")]
+eq(nft[0], "add table inet geo", "nftables: the table is declared first")
+block = nft.index("table inet geo {")
+for setname, typ, want in (("ir_x_v4", "ipv4_addr", v4s),
+                           ("ir_x_v6", "ipv6_addr", v6s)):
+    # the exact line also proves the declaration carries no elements
+    decl = nft.index(f"add set inet geo {setname} "
+                     f"{{ type {typ}; flags interval; auto-merge; }}")
+    flush = nft.index(f"flush set inet geo {setname}")
+    fill = nft.index(f"  set {setname} {{")
+    ok(decl < flush < block < fill,
+       f"nftables: {setname} is declared, flushed, then filled")
+    eq(nft[fill + 1:fill + 5],
+       [f"    type {typ}", "    flags interval", "    auto-merge",
+        "    elements = {"],
+       f"nftables: {setname} is filled as an auto-merging interval set")
+    body = nft[fill + 5:nft.index("    }", fill)]
+    eq([e.strip() for ln in body for e in ln.split(",") if e.strip()],
+       [str(n) for n in want], f"nftables: {setname} gets exactly the input")
+eq(nft[nft.index("  set ir_x_v4 {") + 5].count(","), 8,
+   "nftables: elements are written eight to a line")
+ok(not any("delete" in ln for ln in nft),
+   "nftables: never deletes — user rules may reference these sets")
+ok(not any("_v6" in ln for ln in emit_nft(IPSet("y", "t", v4=v4s))),
+   "nftables: an empty family gets no set, flush or add")
 
 
 print(f"{passed}/{passed + failed} unit checks passed")

@@ -226,7 +226,8 @@ standard response policy zone.
 <summary><b>Firewalls</b></summary>
 
 ```bash
-# nftables
+# nftables — sets ir_v4 / ir_v6 in table inet geo; re-running replaces their
+# contents in one transaction, and your rules that use @ir_v4 keep working
 curl -sfL https://raw.githubusercontent.com/Arman2122/IR-Geo-DB/dist/nftables/ir.nft \
   -o /etc/nftables.d/ir.nft && nft -f /etc/nftables.d/ir.nft
 
