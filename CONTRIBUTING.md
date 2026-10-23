@@ -15,7 +15,7 @@ fix belongs upstream, where it also reaches everyone else consuming that list.
 | An Iranian site missing from the `ir` domain set | [bootmortis/iran-hosted-domains](https://github.com/bootmortis/iran-hosted-domains/issues) |
 | A Persian ad or tracker not blocked | [MasterKia/PersianBlocker](https://github.com/MasterKia/PersianBlocker/issues) |
 | A false positive in the ads list | [HaGeZi](https://github.com/hagezi/dns-blocklists/issues) or [AdGuard](https://github.com/AdguardTeam/AdGuardSDNSFilter/issues) |
-| A wrong malware / phishing entry | [URLhaus](https://urlhaus.abuse.ch), [Phishing.Database](https://github.com/mitchellkrogza/Phishing.Database/issues) |
+| A wrong malware / phishing entry | [URLhaus](https://urlhaus.abuse.ch) or [malware-filter](https://gitlab.com/malware-filter/urlhaus-filter/-/issues), [Phishing.Database](https://github.com/mitchellkrogza/Phishing.Database/issues) |
 | An IP prefix wrongly attributed to Iran | See below — this one is usually ours |
 
 Once upstream merges it, the next daily build picks it up automatically. No

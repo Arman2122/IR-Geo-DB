@@ -281,7 +281,15 @@ def compile_singbox(ctx: BuildContext, require: bool) -> int:
             [exe, "rule-set", "compile", "--output", dst,
              os.path.join(srcdir, name)], capture_output=True, text=True)
         if res.returncode != 0:
-            sys.exit(f"ERROR: sing-box compile failed for {name}: {res.stderr}")
+            with open(os.path.join(srcdir, name), encoding="utf-8") as fh:
+                rules = json.load(fh).get("rules", [])
+            if any(v for r in rules for v in r.values() if isinstance(v, list)):
+                sys.exit(f"ERROR: sing-box compile failed for {name}: {res.stderr}")
+            # an empty set has nothing to lose, and must not cost the release
+            log(f"  warn: sing-box rejected empty {name}, no .srs this build")
+            if os.path.exists(dst):
+                os.remove(dst)
+            continue
         ctx.record(f"sing-box/rule-set/{name[:-5]}.srs", 0)
         made += 1
     log(f"  compiled {made} sing-box .srs rule-sets")
