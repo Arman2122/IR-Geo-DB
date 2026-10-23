@@ -112,31 +112,33 @@ def ip_mikrotik(ctx: BuildContext, s: IPSet) -> None:
                     len(nets), s.sources)
 
 
-IPSET_MIN_MAXELEM = 65536  # ipset's own default, so a small set matches an old load
+# `create ... -exist` is ignored only when a loaded set has exactly the same
+# parameters, so `maxelem` must not move from one daily build to the next.
+# That rules out sizing it to the entry count: it would change nearly every
+# day. Instead it is left at the kernel default (65536) until the set is
+# within 75 % of that, then fixed once at a value far above any list we
+# publish. Omitting it keeps a small set's `create` line identical to what
+# users have loaded already.
+IPSET_DEFAULT_MAXELEM = 65536
+IPSET_DEFAULT_LIMIT = IPSET_DEFAULT_MAXELEM * 3 // 4   # 49,152
+IPSET_LARGE_MAXELEM = 1048576
 
 
-def ipset_maxelem(entries: int) -> int:
-    """The next power of two at or above twice the entries, at least 65536.
-
-    A set that outgrows its maxelem makes `ipset restore` fail partway. Twice
-    the entries leaves room to grow, and a power of two changes only when the
-    set doubles, so a daily reload rarely changes the parameters of a set
-    that is already loaded.
-    """
-    return max(IPSET_MIN_MAXELEM, 1 << (2 * entries - 1).bit_length())
+def ipset_create(slug: str, family: str, entries: int) -> str:
+    """The `create` line for one family: default maxelem, or the fixed large one."""
+    inet = "inet6" if family == "v6" else "inet"
+    size = (f" maxelem {IPSET_LARGE_MAXELEM}"
+            if entries > IPSET_DEFAULT_LIMIT else "")
+    return f"create {slug}-{family} hash:net family {inet}{size} -exist"
 
 
 def ip_ipset(ctx: BuildContext, s: IPSet) -> None:
     lines = []
     if s.v4:
-        lines += [f"create {s.slug}-v4 hash:net family inet "
-                  f"maxelem {ipset_maxelem(len(s.v4))} -exist",
-                  f"flush {s.slug}-v4"]
+        lines += [ipset_create(s.slug, "v4", len(s.v4)), f"flush {s.slug}-v4"]
         lines += [f"add {s.slug}-v4 {n} -exist" for n in s.v4]
     if s.v6:
-        lines += [f"create {s.slug}-v6 hash:net family inet6 "
-                  f"maxelem {ipset_maxelem(len(s.v6))} -exist",
-                  f"flush {s.slug}-v6"]
+        lines += [ipset_create(s.slug, "v6", len(s.v6)), f"flush {s.slug}-v6"]
         lines += [f"add {s.slug}-v6 {n} -exist" for n in s.v6]
     write_lines(ctx, f"ipset/{s.slug}.ipset", lines,
                 f"{s.title} — ipset restore", s.total, s.sources)

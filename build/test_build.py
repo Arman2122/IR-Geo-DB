@@ -707,29 +707,37 @@ def v4_nets(count):
     return [ipaddress.IPv4Network((i << 8, 24)) for i in range(count)]
 
 
+# maxelem is left to the kernel default (65536) up to 75 % of it, so a small
+# set's create line is the one routers already have loaded; past that it is
+# one fixed value, never proportional (create -exist fails if it changes)
+DEFAULT_CREATE = "create t-v4 hash:net family inet -exist"
+LARGE_CREATE = "create t-v4 hash:net family inet maxelem 1048576 -exist"
 lines = ipset_lines(v4=v4_nets(40_000))
-eq(create_line(lines, "v4"),
-   "create t-v4 hash:net family inet maxelem 131072 -exist",
-   "40,000 entries: maxelem 131072")
+eq(create_line(lines, "v4"), DEFAULT_CREATE, "40,000 entries: no maxelem")
 eq(len([ln for ln in lines if not ln.startswith("#")]), 2 + 40_000,
    "...with one create, one flush and the 40,000 adds")
-eq(create_line(ipset_lines(v4=v4_nets(10)), "v4"),
-   "create t-v4 hash:net family inet maxelem 65536 -exist",
-   "10 entries: maxelem 65536, the minimum")
-for count, want in ((1, 65536), (32_768, 65536), (32_769, 131072),
-                    (65_536, 131072), (65_537, 262144)):
-    ok(f" maxelem {want} -exist" in create_line(
-        ipset_lines(v4=v4_nets(count)), "v4"),
-       f"{count} entries: maxelem {want}")
+eq(create_line(ipset_lines(v4=v4_nets(10)), "v4"), DEFAULT_CREATE,
+   "10 entries: no maxelem")
+eq(create_line(ipset_lines(v4=v4_nets(50_000)), "v4"), LARGE_CREATE,
+   "50,000 entries: maxelem 1048576")
+for count, want in ((1, DEFAULT_CREATE), (49_152, DEFAULT_CREATE),
+                    (49_153, LARGE_CREATE), (65_536, LARGE_CREATE),
+                    (200_000, LARGE_CREATE)):
+    eq(create_line(ipset_lines(v4=v4_nets(count)), "v4"), want,
+       f"{count} entries: " + ("maxelem 1048576" if want == LARGE_CREATE
+                               else "no maxelem"))
 v6 = [ipaddress.IPv6Network(((0x20010DB8 << 96) | (i << 64), 64))
       for i in range(10)]
-lines = ipset_lines(v4=v4_nets(40_000), v6=v6)
-eq(create_line(lines, "v4"),
-   "create t-v4 hash:net family inet maxelem 131072 -exist",
-   "each family is sized on its own entries: v4")
-eq(create_line(lines, "v6"),
-   "create t-v6 hash:net family inet6 maxelem 65536 -exist",
-   "each family is sized on its own entries: v6")
+lines = ipset_lines(v4=v4_nets(50_000), v6=v6)
+eq(create_line(lines, "v4"), LARGE_CREATE,
+   "each family is judged on its own entries: v4 over the limit")
+eq(create_line(lines, "v6"), "create t-v6 hash:net family inet6 -exist",
+   "each family is judged on its own entries: v6 under it")
+big6 = [ipaddress.IPv6Network(((0x20010DB8 << 96) | (i << 64), 64))
+        for i in range(50_000)]
+eq(create_line(ipset_lines(v6=big6), "v6"),
+   "create t-v6 hash:net family inet6 maxelem 1048576 -exist",
+   "IPv6 over the limit: maxelem 1048576")
 ok(not any(ln.startswith("create t-v6") for ln in ipset_lines(v4=v4_nets(1))),
    "an empty family gets no create line")
 
