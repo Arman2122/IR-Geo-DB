@@ -485,10 +485,10 @@ a timeout or refused connection before the next mirror is tried.
 **Validation.** A download is believed only after it passes. An HTML page is
 rejected, and so is a file under the source's minimum size or entry count, or
 one that shrank beyond its limit (half, by default) against the last good copy.
-RIS routing dumps older than 3 days and RIR delegation files older than 7 are
-rejected too: those are regenerated daily, so an old one means the publisher's
-generator stalled. A rejected download is treated exactly like a URL that is
-down.
+RIS routing dumps older than 3 days and RIR delegation files older than 30 are
+rejected too: both are regenerated at least daily, so an old one means the
+publisher's generator stalled. A rejected download is treated exactly like a
+URL that is down.
 
 **An owned copy of every input.** Each validated input is committed to this
 repository's `state` branch, whose `NOTICE.md` names each input's licence and

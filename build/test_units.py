@@ -383,13 +383,14 @@ got = {s.key: s.max_stale_days for s in sources.SOURCES}
 want = {k: next(d for p, d in STALE if k.startswith(p)) for k in got}
 eq(got, want, "max_stale_days follows the kind of data")
 
-# a Last-Modified older than this is a stalled generator (ruling R22): RIS
-# dumps are made several times a day, RIR files daily. Nothing else has one;
-# threat feeds legitimately go quiet.
+# a Last-Modified older than this is a stalled generator (rulings R22, R26):
+# RIS dumps are made several times a day and are optional, so 3 days; RIR
+# files are daily but stay valid for weeks and rir-ripencc is required, so
+# 30. Nothing else has one; threat feeds legitimately go quiet.
 got = {s.key: s.max_age_days for s in sources.SOURCES}
-want = {k: 3 if k.startswith("ris-") else 7 if k.startswith("rir-") else None
+want = {k: 3 if k.startswith("ris-") else 30 if k.startswith("rir-") else None
         for k in got}
-eq(got, want, "max_age_days: 3 for ris-*, 7 for rir-*, unset elsewhere")
+eq(got, want, "max_age_days: 3 for ris-*, 30 for rir-*, unset elsewhere")
 
 # the three HaGeZi lists carry the same three official mirrors
 for key, path in (("ads-hagezi", "wildcard/light-onlydomains.txt"),

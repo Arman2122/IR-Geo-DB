@@ -154,10 +154,13 @@ SOURCES: list[Source] = [
                homepage="https://www.nro.net/about/rirs/statistics/",
                optional=(rir != "ripencc"),
                min_entries=min_entries, min_bytes=min_bytes,
-               # regenerated daily; a file a week old is a stalled
+               # regenerated daily; a file a month old is a stalled
                # generator, which would otherwise pass as not-modified
-               # forever (the stale window only starts once a URL fails)
-               max_age_days=7, max_stale_days=14,
+               # forever (the stale window only starts once a URL fails).
+               # A month, not a week (ruling R26): delegations stay valid
+               # for weeks, and rir-ripencc is required, so a short limit
+               # would stop every release over a merely late file.
+               max_age_days=30, max_stale_days=14,
                note="authoritative country delegation")
         for rir, url, min_entries, min_bytes in RIR_STATS
     ],

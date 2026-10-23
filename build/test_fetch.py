@@ -423,8 +423,8 @@ o = fetch.acquire(old, st, opener=Opener({PRIMARY: resp(b"", status=304)}), now=
                   sleep=noop)
 eq(o.status, "stale", "max_age_days: applies to a 304 too")
 
-# the registry's RIS (3 days) and RIR (7 days) limits, as fetch applies them
-# to the Last-Modified both servers send (review M4, ruling R22)
+# the registry's RIS (3 days) and RIR (30 days) limits, as fetch applies them
+# to the Last-Modified both servers send (review M4, rulings R22 and R26)
 for key in ("ris-v4", "ris-v6", "rir-ripencc", "rir-arin"):
     limit = sources.BY_KEY[key].max_age_days
     for days, served in ((limit - 0.5, True), (limit + 0.5, False)):
