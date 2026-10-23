@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import dataclasses
 import email.message
+import email.utils
 import gzip
 import hashlib
 import http.client
@@ -28,6 +29,7 @@ from datetime import datetime, timedelta, timezone
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import fetch  # noqa: E402
+import sources  # noqa: E402
 from fetch import FetchError, Response, StateStore  # noqa: E402
 from sources import Source  # noqa: E402
 from testkit import done, eq, ok  # noqa: E402
@@ -118,6 +120,44 @@ eq(saved and saved[0], GOOD_VALUES, "1 state saved: values")
 eq(saved and {k: saved[1][k] for k in ("url_used", "etag", "validated_at", "entries")},
    {"url_used": MIRROR, "etag": '"v1"', "validated_at": STAMP, "entries": 3},
    "1 state saved: metadata")
+
+# ------------------------------- 1b a hung primary costs two tries (review M9)
+
+op = Opener({PRIMARY: FetchError(0, "timed out"), MIRROR: resp(GOOD)})
+slept = []
+o = fetch.acquire(src(), new_store(), opener=op, now=NOW, sleep=slept.append)
+eq((o.status, o.served_by), ("fresh", "mirror-1"), "1b timeout: the mirror serves")
+eq(op.calls[PRIMARY], 2, "1b a timeout is tried twice, not four times")
+eq(slept, [2], "1b one backoff between the two tries")
+ok("timed out" in o.error, "1b the primary's timeout is recorded")
+
+
+def sequence(*answers):
+    """An opener for _get that gives each answer in turn."""
+    seen = []
+
+    def opener(url, headers):
+        seen.append(url)
+        answer = answers[len(seen) - 1]
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+    return opener, seen
+
+
+E0, E503 = FetchError(0, "timed out"), FetchError(503, "Service Unavailable")
+for answers, calls_made, waits, label in (
+        ((E503, E0, E0), 3, [2, 4], "5xx, then two network failures: stop"),
+        ((E0, E503, E503, E503), 4, [2, 4, 8],
+         "one network failure among 5xx: all four tries"),
+        ((E0, resp(GOOD)), 2, [2], "a network failure, then success")):
+    opener, seen = sequence(*answers)
+    waited: list = []
+    try:
+        fetch._get(PRIMARY, {}, opener, waited.append)
+    except FetchError:
+        pass
+    eq((len(seen), waited), (calls_made, waits), f"1b _get: {label}")
 
 # ------------------------------------------ 2 everything down, copy 3 days old
 
@@ -383,6 +423,19 @@ o = fetch.acquire(old, st, opener=Opener({PRIMARY: resp(b"", status=304)}), now=
                   sleep=noop)
 eq(o.status, "stale", "max_age_days: applies to a 304 too")
 
+# the registry's RIS (3 days) and RIR (7 days) limits, as fetch applies them
+# to the Last-Modified both servers send (review M4, ruling R22)
+for key in ("ris-v4", "ris-v6", "rir-ripencc", "rir-arin"):
+    limit = sources.BY_KEY[key].max_age_days
+    for days, served in ((limit - 0.5, True), (limit + 0.5, False)):
+        lm = email.utils.format_datetime(NOW - timedelta(days=days), usegmt=True)
+        o = fetch.acquire(src(max_age_days=limit, mirrors=()), new_store(),
+                          opener=Opener({PRIMARY: resp(GOOD, {"last-modified": lm})}),
+                          now=NOW, sleep=noop)
+        eq(o.status, "fresh" if served else "dropped",
+           f"max_age_days {key}: a {days}-day-old file is "
+           f"{'accepted' if served else 'rejected'}")
+
 # ------------------------------------------------------------- state store
 
 st = new_store()
@@ -406,6 +459,50 @@ eq(st.load("x"), None, "store: a corrupt copy loads as None")
 with open(os.path.join(st.root, "empty.json"), "w", encoding="utf-8") as fh:
     fh.write("{}")
 eq(st.load("empty"), None, "store: a copy with no validated_at loads as None")
+
+# -------------------------------------- licence and attribution (review I3)
+
+TERMS = {"license": "GPL-3.0", "homepage": "https://h.example",
+         "attribution": "Contains T data"}
+licensed = src(**TERMS)
+st = new_store()
+fetch.acquire(licensed, st, opener=Opener({PRIMARY: resp(GOOD)}), now=NOW,
+              sleep=noop)
+eq({k: st.load("t")[1].get(k) for k in TERMS}, TERMS,
+   "terms: a fresh copy's metadata names its licence, homepage, attribution")
+# a copy stored before the terms were recorded gains them on a 304
+st = new_store()
+st.save("t", GOOD_VALUES, {"url_used": PRIMARY, "validated_at": STAMP,
+                           "etag": '"v1"'})
+o = fetch.acquire(licensed, st, opener=Opener({PRIMARY: resp(b"", status=304)}),
+                  now=NOW, sleep=noop)
+eq((o.status, {k: st.load("t")[1].get(k) for k in TERMS}),
+   ("not-modified", TERMS), "terms: a 304 adds them to an older copy")
+
+root = os.path.join(tempfile.mkdtemp(dir=_TMP.name), "not-yet")
+st = StateStore(root)
+st.write_notice(sources.SOURCES)
+path = os.path.join(root, "NOTICE.md")
+ok(os.path.isfile(path), "notice: NOTICE.md is written, the store created")
+text = open(path, encoding="utf-8").read()
+ok(text.startswith("# IR-Geo-DB state store\n") and "`state` branch" in text,
+   "notice: a header says what the branch is")
+ok("\nContains RIPE NCC RIS data © RIPE NCC\n" in text,
+   "notice: the RIPE NCC RIS attribution line")
+ok("| Key | Source | Licence | Homepage | Attribution |" in text,
+   "notice: the table's columns")
+for s in sources.SOURCES:
+    ok(f"| `{s.key}` | {s.name} | {s.license} | {s.homepage} | "
+       f"{s.attribution} |" in text, f"notice: a row for {s.key}")
+eq(sum(ln.startswith("| `") for ln in text.splitlines()), len(sources.SOURCES),
+   "notice: one row per registered source")
+first = open(path, "rb").read()
+st.write_notice(sources.SOURCES)
+eq(open(path, "rb").read(), first,
+   "notice: no date in it, so an unchanged registry leaves it byte-identical")
+eq(st.load("NOTICE"), None, "notice: never mistaken for a stored source")
+ok("a\\|b" in fetch.notice([src(name="a|b")]),
+   "notice: a | in a cell is escaped")
 
 # ------------------------------------------------------------- local cache
 

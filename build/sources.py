@@ -154,14 +154,20 @@ SOURCES: list[Source] = [
                homepage="https://www.nro.net/about/rirs/statistics/",
                optional=(rir != "ripencc"),
                min_entries=min_entries, min_bytes=min_bytes,
-               max_stale_days=14,
+               # regenerated daily; a file a week old is a stalled
+               # generator, which would otherwise pass as not-modified
+               # forever (the stale window only starts once a URL fails)
+               max_age_days=7, max_stale_days=14,
                note="authoritative country delegation")
         for rir, url, min_entries, min_bytes in RIR_STATS
     ],
 
     # ---- IP: BGP. Origin: authority (RIPE NCC's RIS collectors), used by
     # bgp.py to adjust the registry set to what is actually routed from Iran.
-    # RIPE NCC grants the use on condition of the attribution below.
+    # RIPE NCC grants the use on condition of the attribution below. The
+    # dumps are regenerated several times a day, so one 3 days old means
+    # the dump generation stalled: max_age_days turns that into a stale
+    # source instead of an old routing table served as current.
     Source(key="ris-v4", name="RIPE RIS IPv4 routing table", parser="ris",
            kind="ip", tier="registry", optional=True,
            url="https://www.ris.ripe.net/dumps/riswhoisdump.IPv4.gz",
@@ -169,7 +175,7 @@ SOURCES: list[Source] = [
            homepage="https://www.ripe.net/analyse/internet-measurements/routing-information-service-ris/",
            attribution="Contains RIPE NCC RIS data © RIPE NCC",
            min_entries=790_000, min_bytes=4_000_000,  # 1,133,597 entries, 5.7 MB on 2026-10-23
-           max_stale_days=14),
+           max_age_days=3, max_stale_days=14),
     Source(key="ris-v6", name="RIPE RIS IPv6 routing table", parser="ris",
            kind="ip", tier="registry", optional=True,
            url="https://www.ris.ripe.net/dumps/riswhoisdump.IPv6.gz",
@@ -177,7 +183,7 @@ SOURCES: list[Source] = [
            homepage="https://www.ripe.net/analyse/internet-measurements/routing-information-service-ris/",
            attribution="Contains RIPE NCC RIS data © RIPE NCC",
            min_entries=180_000, min_bytes=930_000,  # 267,407 entries, 1.3 MB on 2026-10-23
-           max_stale_days=14),
+           max_age_days=3, max_stale_days=14),
 
     # ---- IP: provider ASNs. Origin: authority (the RIPE database), derived
     # by us: the ASNs registered to each provider's organisation, which bgp.py

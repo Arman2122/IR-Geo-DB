@@ -35,9 +35,15 @@ import sources
 USER_AGENT = "IR-Geo-DB/1.0 (+https://github.com/Arman2122/IR-Geo-DB)"
 TIMEOUT = 120
 ATTEMPTS = 4
+# A timeout costs TIMEOUT each time, so four of them on a hung primary held
+# its mirrors back for about 8 minutes. A network failure (a timeout or a
+# refused connection) is tried twice; a 5xx answers fast and keeps ATTEMPTS.
+NETWORK_ATTEMPTS = 2
 # the shrink check needs a stored copy at least this big to mean anything
 SHRINK_MIN_STORED = 100
 SERVED = ("fresh", "not-modified")
+# the state store's licence and attribution notice (see notice())
+NOTICE = "NOTICE.md"
 
 
 class Response(NamedTuple):
@@ -91,12 +97,20 @@ def http_get(url: str, headers: dict[str, str], timeout: int = TIMEOUT) -> Respo
 
 
 def _get(url: str, headers: dict[str, str], opener, sleep) -> Response:
-    """Retry network errors and 5xx; any other status goes to the next URL."""
+    """Retry network errors and 5xx; any other status goes to the next URL.
+
+    At most NETWORK_ATTEMPTS network failures and ATTEMPTS tries in all.
+    """
+    network_failures = 0
     for attempt in range(ATTEMPTS):
         try:
             return opener(url, headers)
         except FetchError as exc:
-            if 0 < exc.status < 500 or attempt == ATTEMPTS - 1:
+            if 0 < exc.status < 500:
+                raise
+            network_failures += exc.status == 0
+            if (attempt == ATTEMPTS - 1
+                    or network_failures == NETWORK_ATTEMPTS):
                 raise
             sleep(2 ** attempt * 2)
     raise AssertionError("unreachable")
@@ -165,7 +179,8 @@ def _write_atomic(path: str, data: bytes) -> None:
 
 class StateStore:
     """The last validated copy of each source: `<key>.values.gz` (one value
-    per line) and `<key>.json` (where it came from and when)."""
+    per line) and `<key>.json` (where it came from, when, and its licence),
+    plus one NOTICE.md for the whole store."""
 
     def __init__(self, root: str):
         self.root = root
@@ -193,6 +208,51 @@ class StateStore:
                       gzip.compress("\n".join(values).encode("utf-8"), mtime=0))
         _write_atomic(self._path(key, ".json"),
                       (json.dumps(meta, indent=2, sort_keys=True) + "\n").encode("utf-8"))
+
+    def write_notice(self, srcs) -> None:
+        """Write NOTICE.md: whose data each stored copy is, and on what terms."""
+        os.makedirs(self.root, exist_ok=True)
+        _write_atomic(os.path.join(self.root, NOTICE),
+                      notice(srcs).encode("utf-8"))
+
+
+def _cell(text: str) -> str:
+    return str(text or "").replace("|", "\\|").replace("\n", " ")
+
+
+def notice(srcs) -> str:
+    """NOTICE.md for the state store, from the source registry.
+
+    The `state` branch is public and holds a parsed copy of every input, so
+    each licence and attribution has to travel with it (the RIS terms
+    require theirs). No date in it: an unchanged registry leaves the file
+    byte-identical, so the branch shows no diff.
+    """
+    srcs = list(srcs)
+    lines = [
+        "# IR-Geo-DB state store",
+        "",
+        "This is the `state` branch of IR-Geo-DB, written by its daily build. "
+        "It holds the last validated copy of every upstream source, which the "
+        "build falls back on when that source cannot be fetched. It is not a "
+        "release: the published data is on the `dist` branch and the "
+        "Releases page.",
+        "",
+        "For each source, `<key>.values.gz` is the list of values this project "
+        "parsed from the upstream file, one per line, and `<key>.json` "
+        "records where and when it was fetched. Each copy is the upstream's "
+        "data and stays under the upstream's terms, listed below.",
+        "",
+    ]
+    attributions = list(dict.fromkeys(s.attribution for s in srcs
+                                      if s.attribution))
+    if attributions:
+        lines += attributions + [""]
+    lines += ["| Key | Source | Licence | Homepage | Attribution |",
+              "|---|---|---|---|---|"]
+    lines += [f"| `{s.key}` | {_cell(s.name)} | {_cell(s.license)} | "
+              f"{_cell(s.homepage)} | {_cell(s.attribution)} |" for s in srcs]
+    return "\n".join(lines) + "\n"
 
 
 # ----------------------------------------------------------- acquisition
@@ -269,6 +329,10 @@ def acquire(src, store: StateStore, *, opener=http_get, cache_dir: str | None = 
     # real shrink would drop the source on every run from then on
     baseline = old_values if usable else None
     errors = []
+    # the stored metadata names the copy's terms, since the state branch
+    # republishes it; refreshed on a 304 too, so older copies gain them
+    terms = {"license": src.license, "homepage": src.homepage,
+             "attribution": src.attribution}
 
     for i, url in enumerate((src.url, *src.mirrors)):
         served_by = f"mirror-{i}" if i else "primary"
@@ -296,7 +360,8 @@ def acquire(src, store: StateStore, *, opener=http_get, cache_dir: str | None = 
             continue
 
         if resp.status == 304:
-            meta = {**meta, "validated_at": stamp, "last_modified": last_modified,
+            meta = {**meta, **terms, "validated_at": stamp,
+                    "last_modified": last_modified,
                     "etag": resp.headers.get("etag") or meta.get("etag", "")}
             store.save(src.key, old_values, meta)
             return _from_meta(src.key, "not-modified", served_by, old_values,
@@ -307,7 +372,7 @@ def acquire(src, store: StateStore, *, opener=http_get, cache_dir: str | None = 
                 "last_modified": resp.headers.get("last-modified", ""),
                 "sha256": hashlib.sha256(resp.body).hexdigest(),
                 "bytes": len(resp.body), "entries": len(parsed.values),
-                "invalid": parsed.invalid}
+                "invalid": parsed.invalid, **terms}
         store.save(src.key, parsed.values, meta)
         if cache and not cached:
             os.makedirs(cache_dir, exist_ok=True)
