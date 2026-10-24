@@ -1,0 +1,9 @@
+{
+  "set": "phishing",
+  "title": "IP addresses hosting active phishing",
+  "sources": [],
+  "generated": "2026-10-24 08:19:30 UTC",
+  "version": "v2026.10.24",
+  "ipv4": [],
+  "ipv6": []
+}

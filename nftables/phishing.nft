@@ -1,0 +1,9 @@
+# IP addresses hosting active phishing — nftables sets
+# Entries: 0
+# Built:   2026-10-24 08:19:30 UTC   Release: v2026.10.24
+# Sources: n/a
+# Project: https://github.com/Arman2122/IR-Geo-DB
+#
+add table inet geo
+table inet geo {
+}
