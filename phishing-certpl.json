@@ -1,0 +1,13 @@
+{
+  "attribution": "",
+  "bytes": 2587962,
+  "entries": 126367,
+  "etag": "W/\"6ae5b9ce-277d3a\"",
+  "homepage": "https://cert.pl/en/warning-list/",
+  "invalid": 0,
+  "last_modified": "Sat, 31 Oct 2026 09:50:06 GMT",
+  "license": "free for any use",
+  "sha256": "149808a0bdd09b1dc3b4421d711e55c687f7eda8345fe1fe975ec65ac1223e24",
+  "url_used": "https://hole.cert.pl/domains/v2/domains.txt",
+  "validated_at": "2026-10-31T09:52:32Z"
+}

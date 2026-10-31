@@ -1,0 +1,13 @@
+{
+  "attribution": "",
+  "bytes": 451,
+  "entries": 24,
+  "etag": "",
+  "homepage": "https://api.fastly.com/public-ip-list",
+  "invalid": 0,
+  "last_modified": "",
+  "license": "Provider-published",
+  "sha256": "b5e8800ff76c2a8fdcedb7d9b27f23b6cb3158034b157540e594651d42b60bc6",
+  "url_used": "https://api.fastly.com/public-ip-list",
+  "validated_at": "2026-10-31T09:52:32Z"
+}

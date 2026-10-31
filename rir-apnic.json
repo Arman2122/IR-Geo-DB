@@ -1,0 +1,13 @@
+{
+  "attribution": "",
+  "bytes": 9290660,
+  "entries": 0,
+  "etag": "\"6ae4b476-8dc3a4\"",
+  "homepage": "https://www.nro.net/about/rirs/statistics/",
+  "invalid": 0,
+  "last_modified": "Fri, 30 Oct 2026 15:15:02 GMT",
+  "license": "Registry public data",
+  "sha256": "3accda8b8b1f5882110f6f76cb43c039a36e1e6af71eb1c2f659beb077673d4b",
+  "url_used": "https://ftp.apnic.net/stats/apnic/delegated-apnic-extended-latest",
+  "validated_at": "2026-10-31T09:52:32Z"
+}

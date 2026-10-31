@@ -1,0 +1,13 @@
+{
+  "attribution": "",
+  "bytes": 11459,
+  "entries": 261,
+  "etag": "W/\"e6c7370630431a2336a7648ab9128c36bc13ad543285e4412a346609443fc31c\"",
+  "homepage": "https://github.com/PersianBlocker/PersianBlocker",
+  "invalid": 2,
+  "last_modified": "",
+  "license": "AGPL-3.0",
+  "sha256": "443829cd159eb0c7563c82a3ff10c7fe982a43ec21a5a7eb8b56c1290c56d5a0",
+  "url_used": "https://raw.githubusercontent.com/PersianBlocker/PersianBlocker/main/PersianBlockerHosts.txt",
+  "validated_at": "2026-10-31T09:52:32Z"
+}

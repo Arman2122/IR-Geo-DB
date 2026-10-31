@@ -1,0 +1,13 @@
+{
+  "attribution": "",
+  "bytes": 8150,
+  "entries": 312,
+  "etag": "W/\"69bed53276b20e1d5ce52120965e48da9655b46ef478d46110e8d3959f26a324\"",
+  "homepage": "https://github.com/hoshsadiq/adblock-nocoin-list",
+  "invalid": 0,
+  "last_modified": "",
+  "license": "MIT",
+  "sha256": "41c0e875b48dc65282c9aee579ae315eb557f115be654d6a9e4fccac7db9a2d1",
+  "url_used": "https://raw.githubusercontent.com/hoshsadiq/adblock-nocoin-list/master/hosts.txt",
+  "validated_at": "2026-10-31T09:52:32Z"
+}
