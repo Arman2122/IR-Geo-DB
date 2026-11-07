@@ -1,0 +1,13 @@
+{
+  "attribution": "Contains RIPE NCC RIS data \u00a9 RIPE NCC",
+  "bytes": 1351631,
+  "entries": 269098,
+  "etag": "\"149fcf-21bfe598ab3c5424\"",
+  "homepage": "https://www.ripe.net/analyse/internet-measurements/routing-information-service-ris/",
+  "invalid": 0,
+  "last_modified": "Sat, 07 Nov 2026 10:22:13 GMT",
+  "license": "RIPE NCC RIS data (attribution required)",
+  "sha256": "92741c1082a0913b766a252f0947332d6450041ce4c31f049d64c8e6775aa384",
+  "url_used": "https://www.ris.ripe.net/dumps/riswhoisdump.IPv6.gz",
+  "validated_at": "2026-11-07T10:32:41Z"
+}

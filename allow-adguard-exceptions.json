@@ -1,0 +1,13 @@
+{
+  "attribution": "",
+  "bytes": 19080,
+  "entries": 176,
+  "etag": "W/\"e7d1793ed913be35e3321a11331b1e9935900c39083fc2a165ee7822f0d77d4e\"",
+  "homepage": "https://github.com/AdguardTeam/AdGuardSDNSFilter",
+  "invalid": 0,
+  "last_modified": "",
+  "license": "GPL-3.0",
+  "sha256": "837a62c35c9c41f48e5c23ce95a251a08483ece817048a6b4038a812a0702e10",
+  "url_used": "https://raw.githubusercontent.com/AdguardTeam/AdGuardSDNSFilter/master/Filters/exceptions.txt",
+  "validated_at": "2026-11-07T10:32:41Z"
+}

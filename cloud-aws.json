@@ -1,0 +1,13 @@
+{
+  "attribution": "",
+  "bytes": 2753162,
+  "entries": 17801,
+  "etag": "\"c9c6e1ed5c4d25224a9eafa62f4976a5\"",
+  "homepage": "https://ip-ranges.amazonaws.com",
+  "invalid": 0,
+  "last_modified": "Sat, 07 Nov 2026 08:28:07 GMT",
+  "license": "Provider-published",
+  "sha256": "ceab0c0f5ad9b769e1fd54b2477129a4b0bf21c56ea591b66d7b687d0a880c9d",
+  "url_used": "https://ip-ranges.amazonaws.com/ip-ranges.json",
+  "validated_at": "2026-11-07T10:32:41Z"
+}
