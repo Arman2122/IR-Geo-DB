@@ -1,0 +1,13 @@
+{
+  "attribution": "",
+  "bytes": 8777,
+  "entries": 578,
+  "etag": "W/\"27ddba448567f337db9dc2b7a0112049226d0b5e954e27c3384cd84a9d143141\"",
+  "homepage": "https://github.com/ipverse/rir-ip",
+  "invalid": 0,
+  "last_modified": "",
+  "license": "Public domain",
+  "sha256": "82d3457be1adff6fccd00667f6fcfbfd9849017b97085bc8bb6b8063be2cd283",
+  "url_used": "https://raw.githubusercontent.com/ipverse/rir-ip/master/country/ir/ipv6-aggregated.txt",
+  "validated_at": "2026-11-14T10:45:30Z"
+}

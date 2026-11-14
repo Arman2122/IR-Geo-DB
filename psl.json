@@ -1,0 +1,13 @@
+{
+  "attribution": "",
+  "bytes": 340587,
+  "entries": 10439,
+  "etag": "W/\"286457cfdbe759cb103371714496dd9e\"",
+  "homepage": "https://publicsuffix.org",
+  "invalid": 0,
+  "last_modified": "Sat, 14 Nov 2026 09:32:58 GMT",
+  "license": "MPL-2.0",
+  "sha256": "1574b59b0c2d7e9d954b3d80aed3587a1801e1d1ca8d7d2c66a2af2c5aa6811d",
+  "url_used": "https://publicsuffix.org/list/public_suffix_list.dat",
+  "validated_at": "2026-11-14T10:45:30Z"
+}

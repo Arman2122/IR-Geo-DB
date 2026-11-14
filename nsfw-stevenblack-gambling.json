@@ -1,0 +1,13 @@
+{
+  "attribution": "",
+  "bytes": 149253,
+  "entries": 6744,
+  "etag": "W/\"5619380b1a47ed3548fbd766134c1899a48e21ead57b2abc5cd4a55bd17c865c\"",
+  "homepage": "https://github.com/StevenBlack/hosts",
+  "invalid": 0,
+  "last_modified": "",
+  "license": "MIT",
+  "sha256": "7d7cd2ed20ef123ace99b4c110b86878408308e6e659bc0437b4bfb4bd44fb91",
+  "url_used": "https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/gambling-only/hosts",
+  "validated_at": "2026-11-14T10:45:30Z"
+}

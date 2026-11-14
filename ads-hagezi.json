@@ -1,0 +1,13 @@
+{
+  "attribution": "",
+  "bytes": 1941741,
+  "entries": 90272,
+  "etag": "W/\"e5e0368cfcfb2d2f27dfda2f80218fc54e3d68a4e913589cdb4624a325a961a3\"",
+  "homepage": "https://github.com/hagezi/dns-blocklists",
+  "invalid": 0,
+  "last_modified": "",
+  "license": "GPL-3.0",
+  "sha256": "a8086d9dfa9aa1caabfbe84d87d9e41617d407b3b00e83ac1dd4b60c2bb77c23",
+  "url_used": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/light-onlydomains.txt",
+  "validated_at": "2026-11-14T10:45:30Z"
+}
