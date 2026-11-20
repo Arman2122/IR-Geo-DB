@@ -1,0 +1,69 @@
+# Curated Iranian non-.ir domains missing from upstream registries
+# (bootmortis/iran-hosted-domains and v2fly/domain-list-community).
+#
+# Inclusion criteria:
+#   1. The service is genuinely Iranian (operated in Iran or for Iranian users)
+#      and NOT blocked inside Iran.
+#   2. The domain is NOT under .ir or .ایران (those collapse automatically).
+#   3. The domain is NOT a shared hosting / PSL private suffix.
+#   4. The domain resolves to active Iranian infrastructure (verified via DNS
+#      and origin ASN / provider ranges).
+#
+# Entries are deduplicated automatically once accepted upstream — please still
+# submit additions to bootmortis/iran-hosted-domains or
+# v2fly/domain-list-community when possible.
+#
+# Verified: 2026-11-20
+
+# Cloud, hosting, ISP & infrastructure
+abramad.com             # Abramad cloud (IR)
+electrotm.org           # Electro anti-sanction DNS (IR)
+hostiran.cloud          # HostIran cloud (ArvanCloud)
+ivira.ai                # Vira Iranian AI platform (ArvanCloud)
+mizbancloud.com         # MizbanCloud CDN / hosting (IR)
+mobinnet.net            # MobinNet ISP (IR)
+netafraz.com            # NetAfraz hosting (IR)
+rightel.net             # RighTel mobile operator (IR)
+shatel.net              # Shatel ISP (IR)
+taskulu.app             # Taskulu project management (ArvanCloud)
+
+# E-commerce, retail, jobs & services
+azki.co                 # Azki insurance (IR)
+azizkhodro.com          # Aziz Khodro (IR)
+dastaas.com             # Dastaas (ArvanCloud)
+digify.shop             # Digify / Digikala shop builder (Sotoon/Arvan)
+digikala-service.com    # Digikala Service (IR)
+elecompiran.com         # Iran Elecomp exhibition (IR)
+fardamotors.com         # Farda Motors (IR)
+golrangsystem.com       # Golrang System (AS200312, IR)
+irantalent.com          # IranTalent jobs (ArvanCloud)
+khanoumi.com            # Khanoumi e-commerce (Sotoon/Arvan)
+komodaa.com             # Komodaa marketplace (IR)
+paliz.org               # Paliz (ArvanCloud)
+positron-shop.com       # Positron Shop (ArvanCloud)
+salamat24.com           # Salamat24 healthcare (IR)
+tapsifood.com           # Tapsi Food (IR)
+
+# FinTech, payments, crypto & gold
+azkivam.com             # AzkiVam BNPL (Sotoon/Arvan)
+kifpool.me              # Kifpool exchange (IR)
+milli.gold              # Milli gold platform (ArvanCloud)
+nerkhbaha.com           # NerkhBaha financial rates (ArvanCloud)
+shepa.com               # Shepa payment gateway (ArvanCloud)
+technogold.gold         # TechnoGold (Sotoon/Arvan)
+tomaner.com             # Tomaner (MizbanCloud)
+zib.al                  # Zibal payment shortener / gateway (ArvanCloud)
+
+# Media, news, streaming & tickets
+cinemashahr.com         # CinemaShahr (ArvanCloud)
+fajriff.com             # Fajr Film Festival (ArvanCloud)
+farnet.io               # Farnet tech media (IR)
+gadgetnews.net          # GadgetNews Persian tech media (IR)
+gisheh724.com           # Gisheh724 cinema tickets (ArvanCloud)
+honarticket.com         # HonarTicket (ArvanCloud)
+khabarban.com           # Khabarban news aggregator (IR)
+mizan.news              # Mizan news agency (IR)
+owjmedia.org            # Owj Media (IR)
+sharghdaily.com         # Shargh Daily newspaper (IR)
+showtick.org            # ShowTick tickets (MizbanCloud)
+upera.tv                # Upera streaming (IR)

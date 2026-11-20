@@ -107,8 +107,12 @@ def render(stats: dict, version: str) -> str:
     rows = [("ir", "IPv4 prefixes", count(ip, "ir", "ipv4")),
             ("ir", "IPv6 prefixes", count(ip, "ir", "ipv6")),
             ("ir", "domains", count(dom, "ir", "suffix", "full")),
-            ("ir-cdn", "Iranian CDN prefixes",
-             count(ip, "ir-cdn", "ipv4", "ipv6"))]
+            ("ir-cdn", "Iranian CDN / hosting prefixes",
+             count(ip, "ir-cdn", "ipv4", "ipv6")),
+            ("ir-full", "Iran + CDN combined prefixes",
+             count(ip, "ir-full", "ipv4", "ipv6")),
+            ("private", "local / private domains",
+             count(dom, "private", "suffix", "full"))]
     for key, label in (("ads", "advertising / tracking"),
                        ("malware", "malware"), ("phishing", "phishing"),
                        ("cryptominers", "cryptominers"),
@@ -140,6 +144,16 @@ def render(stats: dict, version: str) -> str:
             f"({fmt(bgp.get('removed_prefixes', 0))} prefixes) inside them "
             f"that only foreign networks announce, on "
             f"{fmt(bgp.get('registry_addresses', 0))} registry IPv4 addresses.")
+        if bgp.get("rpki_applied"):
+            add(f"- Validated with RPKI ROV ({fmt(bgp.get('rpki_vrps', 0))} "
+                f"VRPs): rescued {fmt(bgp.get('rpki_rescued_addresses', 0))} "
+                f"RPKI-valid addresses ({fmt(bgp.get('rpki_rescued_prefixes', 0))} "
+                f"prefixes) under foreign supernets, blocked "
+                f"{fmt(bgp.get('rpki_blocked_foreign_prefixes', 0))} "
+                f"RPKI-invalid foreign removals "
+                f"({fmt(bgp.get('rpki_blocked_foreign_addresses', 0))} addresses), "
+                f"and rejected {fmt(bgp.get('rpki_rejected_ir_prefixes', 0))} "
+                f"foreign-ROA-invalid Iranian announcements.")
     else:
         add("- No BGP adjustment: routing data was unavailable for this "
             "build, so `ir` is registry-only.")
@@ -151,7 +165,8 @@ def render(stats: dict, version: str) -> str:
                 f"identical prefixes, coverage ratio "
                 f"{xc['address_coverage_ratio']}.")
     if audit.get("foreign_cloud_excluded"):
-        add(f"- Cloudflare, AWS, Google, Fastly and G-Core ranges subtracted "
+        add(f"- Cloudflare, AWS, Google, Fastly, G-Core, Oracle Cloud and "
+            f"DigitalOcean ranges subtracted "
             f"({fmt(audit.get('foreign_cloud_overlap_addresses', 0))} addresses).")
     add("- Iranian CDN ranges ship separately as `ir-cdn` — those published "
         "lists include edge nodes outside Iran. `ir-full` is the union.")
@@ -185,16 +200,19 @@ def render(stats: dict, version: str) -> str:
     add(f"curl -sfLO {LATEST}/geosite.dat")
     add("```")
     add("")
-    add("Use `geoip:ir`, `geosite:ir`, `geosite:ads`, `geoip:malware`. "
-        "`geosite:category-ads-all` is present as an alias for existing configs. "
-        "A ready-made rule block is attached as `xray-routing-rules.json`.")
+    add("Use `geoip:ir` (or `geoip:ir-full` for Iranian CDN foreign edges), "
+        "`geosite:ir`, `geosite:private`, `geosite:ads`, `geoip:malware`. "
+        "`geosite:category-ir`, `geosite:category-ads-all`, "
+        "`geosite:category-ads-ir` and `geosite:tld-ir` are present as aliases "
+        "for existing configs. A ready-made rule block is attached as "
+        "`xray-routing-rules.json`.")
     add("</details>")
     add("")
     add("<details><summary><b>sing-box</b></summary>")
     add("")
     add("```json")
     add('{ "type": "remote", "tag": "geosite-ir", "format": "binary",')
-    add(f'  "url": "{RAW}/sing-box/rule-set/geosite-ir.srs",')
+    add(f'  "url": "{CDN}/sing-box/rule-set/geosite-ir.srs",')
     add('  "download_detour": "direct", "update_interval": "1d" }')
     add("```")
     add("</details>")

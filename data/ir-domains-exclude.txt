@@ -1,0 +1,15 @@
+# Domains excluded from the `ir` direct-routing set even if an upstream list
+# includes them.
+#
+# Use this for:
+#   - Global / foreign shared infrastructure mistakenly added upstream
+#     (e.g. asia.pool.ntp.org in bootmortis/iran-hosted-domains).
+#   - Foreign services or sites blocked inside Iran that must NOT be routed
+#     direct.
+#
+# Matching removes the exact name (and any suffix/full entry equal to it).
+# Verified: 2026-11-20
+
+asia.pool.ntp.org       # Global NTP Pool zone, not an Iranian service
+pool.ntp.org            # Global NTP Pool
+ntp.org                 # Global NTP infrastructure

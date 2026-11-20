@@ -27,9 +27,12 @@ import fetch  # noqa: E402
 import geodat  # noqa: E402
 import sources  # noqa: E402
 from emitters import BuildContext  # noqa: E402
-from model import (DomainSet, IPSet, exclude_networks,  # noqa: E402
+from model import (DomainSet, IPSet, clean_domain, exclude_networks,  # noqa: E402
                    make_domainset, make_ipset, parse_networks, psl_filter,
                    public_suffixes, subtract_allowlist)
+
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_DIR = os.path.join(REPO_ROOT, "data")
 
 PRIVATE_RANGES = [
     "0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8",
@@ -38,6 +41,13 @@ PRIVATE_RANGES = [
     "203.0.113.0/24", "224.0.0.0/4", "240.0.0.0/4", "255.255.255.255/32",
     "::1/128", "fc00::/7", "fe80::/10", "ff00::/8", "::/128",
 ]
+
+# Baseline local/private DNS suffixes (RFC 6761 / 8375 / 6762), merged with
+# v2fly's PRIVATE category (which adds RFC 1918 reverse-DNS .arpa zones).
+PRIVATE_DOMAINS = (
+    "localhost", "local", "lan", "home.arpa", "internal",
+    "localdomain", "intranet", "corp", "home", "private",
+)
 
 IP_ROLES = {
     "ir": ("Iran — IP ranges delegated to Iranian organisations", "direct"),
@@ -52,6 +62,7 @@ IP_ROLES = {
 
 DOMAIN_ROLES = {
     "ir": ("Iranian domains", "direct"),
+    "private": ("Local and private network domains", "plain"),
     "ads": ("Advertising and tracking domains", "block"),
     "ads-ir": ("Persian advertising and tracking domains", "block"),
     "malware": ("Active malware domains", "block"),
@@ -71,12 +82,13 @@ IR_TLDS = ("ir", "xn--mgba3a4f16a")
 # that are PSL private rules after the .ir/.ایران collapse. The other five
 # are not Iranian: dyndns.org, selfip.com and sells-it.net (DynDNS.com),
 # ddnsguru.com (Dynu) and co.com (co.com Registry, CentralNic). A suffix
-# under .ir or .ایران, such as vistablog.ir, needs no entry: the TLD rule
-# already covers it.
+# under .ir or .ایران, such as vistablog.ir or arvanedge.ir, needs no entry:
+# the TLD rule already covers it.
 IR_PLATFORM_SUFFIXES = frozenset({
-    # Liara, an Iranian PaaS that serves apps as <app>.liara.run. The PSL
-    # entry reads "Liara : https://liara.ir", submitted from info@liara.ir.
+    # Liara, an Iranian PaaS that serves apps as <app>.liara.run and
+    # <app>.iran.liara.run. The PSL entry reads "Liara : https://liara.ir".
     "liara.run",
+    "iran.liara.run",
 })
 
 # Credits on each set: plain names a reader can follow. They are fixed, not
@@ -85,6 +97,7 @@ IR_PLATFORM_SUFFIXES = frozenset({
 RIR_CREDIT = ("RIR delegated statistics (RIPE NCC, APNIC, ARIN, LACNIC, "
               "AFRINIC)")
 RIS_CREDIT = "RIPE NCC RIS routing data"
+RPKI_CREDIT = "RPKI VRPs (rpki-client)"
 
 # The last published release's stats.json, what the day-over-day guard
 # compares a build against. GitHub redirects it to the asset.
@@ -174,15 +187,30 @@ def _ris_generated(h: fetch.Harvest) -> str:
     return out.last_modified or out.fetched_at
 
 
+def _rpki_vrps(h: fetch.Harvest) -> bgp.VRPIndex | None:
+    """Build the RPKI VRP index once, or None when RPKI data is unavailable."""
+    raw = h.get("rpki-vrps")
+    if not raw:
+        return None
+    try:
+        return bgp.vrps_from(raw)
+    except ValueError as exc:
+        log(f"  warn: unreadable RPKI VRP data ({exc}) — falling back to "
+            f"covering-route hijack heuristic")
+        return None
+
+
 def _bgp_adjust(h: fetch.Harvest, reg_v4: list, reg_v6: list,
                 ir_asns: set[int], routes: list | None,
-                neutral_asns: set[int] = frozenset()
+                neutral_asns: set[int] = frozenset(),
+                vrps: bgp.VRPIndex | None = None
                 ) -> tuple[list, list, dict]:
-    """Registry IR → BGP add/remove → anomaly limits.
+    """Registry IR → BGP (+ RPKI ROV) add/remove → anomaly limits.
 
-    `neutral_asns` are the providers' own ASNs (bgp.adjust says how they
-    count). Raises bgp.BGPAnomaly when the change is beyond the limits: a
-    leak or a broken dump, which must fail the build rather than publish.
+    `neutral_asns` are the global/edge providers' own ASNs (bgp.adjust says
+    how they count). Raises bgp.BGPAnomaly when the change is beyond the
+    limits: a leak or a broken dump, which must fail the build rather than
+    publish.
     """
     report = {"applied": False, "ir_asns": 0,
               "ris_generated": _ris_generated(h), "registry_addresses": 0,
@@ -190,17 +218,25 @@ def _bgp_adjust(h: fetch.Harvest, reg_v4: list, reg_v6: list,
               "removed_prefixes": 0, "removed_addresses": 0,
               "excluded_prefixes": 0, "excluded_addresses": 0,
               "registry_addresses_v6": 0, "added_addresses_v6": 0,
-              "removed_addresses_v6": 0}
+              "removed_addresses_v6": 0,
+              "rpki_applied": False, "rpki_vrps": 0,
+              "rpki_rescued_prefixes": 0, "rpki_rescued_addresses": 0,
+              "rpki_rejected_ir_prefixes": 0, "rpki_rejected_ir_addresses": 0,
+              "rpki_blocked_foreign_prefixes": 0,
+              "rpki_blocked_foreign_addresses": 0}
     if routes is None:
         return reg_v4, reg_v6, report
 
-    adj = bgp.adjust(reg_v4 + reg_v6, routes, ir_asns, neutral_asns)
+    adj = bgp.adjust(reg_v4 + reg_v6, routes, ir_asns, neutral_asns, vrps=vrps)
     bgp.check_limits(adj)
     # IPv4 only, like the unsuffixed address counts, so each prefix count
     # pairs with its address count
     added4 = sum(1 for n in adj.added if n.version == 4)
     removed4 = sum(1 for n in adj.removed if n.version == 4)
     excluded4 = [n for n in adj.excluded if n.version == 4]
+    rescued4 = [n for n in adj.rpki_rescued if n.version == 4]
+    rejected4 = [n for n in adj.rpki_rejected_ir if n.version == 4]
+    blocked4 = [n for n in adj.rpki_blocked_foreign if n.version == 4]
     report.update(applied=True, ir_asns=len(ir_asns),
                   registry_addresses=adj.registry_addresses,
                   added_prefixes=added4, added_addresses=adj.added_addresses,
@@ -210,12 +246,25 @@ def _bgp_adjust(h: fetch.Harvest, reg_v4: list, reg_v6: list,
                   excluded_addresses=adj.excluded_addresses,
                   registry_addresses_v6=adj.registry_addresses_v6,
                   added_addresses_v6=adj.added_addresses_v6,
-                  removed_addresses_v6=adj.removed_addresses_v6)
+                  removed_addresses_v6=adj.removed_addresses_v6,
+                  rpki_applied=adj.rpki_applied,
+                  rpki_vrps=adj.rpki_vrps,
+                  rpki_rescued_prefixes=len(rescued4),
+                  rpki_rescued_addresses=adj.rpki_rescued_addresses,
+                  rpki_rejected_ir_prefixes=len(rejected4),
+                  rpki_rejected_ir_addresses=adj.rpki_rejected_ir_addresses,
+                  rpki_blocked_foreign_prefixes=len(blocked4),
+                  rpki_blocked_foreign_addresses=adj.rpki_blocked_foreign_addresses)
     log(f"  BGP adjustment ({len(ir_asns)} IR ASNs, {len(routes)} RIS routes): "
         f"+{added4} IPv4 prefixes (+{adj.added_addresses} addresses), "
         f"-{removed4} (-{adj.removed_addresses} addresses) on "
         f"{adj.registry_addresses} registry IPv4 addresses; IPv6 "
         f"+{len(adj.added) - added4} / -{len(adj.removed) - removed4} prefixes")
+    if adj.rpki_applied:
+        log(f"  RPKI ROV ({adj.rpki_vrps:,} VRPs): "
+            f"rescued {len(rescued4)} IPv4 prefixes (+{adj.rpki_rescued_addresses} addrs), "
+            f"blocked {len(blocked4)} invalid foreign removals ({adj.rpki_blocked_foreign_addresses} addrs), "
+            f"rejected {len(rejected4)} foreign-ROA-invalid IR additions ({adj.rpki_rejected_ir_addresses} addrs)")
     if adj.excluded:
         # few by design, and each one is worth a look
         log(f"  not added, under a foreign route: "
@@ -286,13 +335,23 @@ def build_ip_sets(h: fetch.Harvest, strict_exclude: bool) -> tuple[dict, dict]:
         f"{reg_bad} malformed)")
 
     routes = _ris_routes(h)
-    # The providers' ASNs, the same ones `ir-cdn` is built from. Those
-    # registered abroad would otherwise count as foreign and remove the
-    # provider's own Iranian space from `ir` (bgp.adjust).
+    vrps = _rpki_vrps(h)
+    # The providers' ASNs, the same ones `ir-cdn` is built from. Domestic-only
+    # offshore-registered Iranian networks (100% IR transit, no foreign PoPs)
+    # join `ir_asns`; global/edge CDN providers registered abroad stay
+    # `neutral_asns` so they neither remove IR space nor leak foreign edges.
     provider_asns = _provider_asns(h)
+    domestic_asns = set().union(*(
+        provider_asns[name] for name, info in sources.PROVIDERS.items()
+        if info.get("domestic")
+    )) if sources.PROVIDERS else set()
+    neutral_asns = set().union(*(
+        provider_asns[name] for name, info in sources.PROVIDERS.items()
+        if not info.get("domestic")
+    )) if sources.PROVIDERS else set()
     ir_v4, ir_v6, audit["bgp"] = _bgp_adjust(
-        h, reg_v4, reg_v6, ir_asns, routes,
-        set().union(*provider_asns.values()))
+        h, reg_v4, reg_v6, ir_asns | domestic_asns, routes,
+        neutral_asns, vrps=vrps)
 
     cloud_v4, cloud_v6, _ = parse_networks(h.any_of("cloud-"))
     cloud = cloud_v4 + cloud_v6
@@ -311,7 +370,8 @@ def build_ip_sets(h: fetch.Harvest, strict_exclude: bool) -> tuple[dict, dict]:
             f"{dropped4 + dropped6} addresses")
 
     ir = IPSet(slug="ir", title=IP_ROLES["ir"][0], v4=_collapse(ir_v4),
-               v6=_collapse(ir_v6), sources=[RIR_CREDIT, RIS_CREDIT],
+               v6=_collapse(ir_v6),
+               sources=[RIR_CREDIT, RIS_CREDIT, RPKI_CREDIT],
                malformed=reg_bad)
 
     private_nets = [ipaddress.ip_network(p) for p in PRIVATE_RANGES]
@@ -368,27 +428,71 @@ def build_ip_sets(h: fetch.Harvest, strict_exclude: bool) -> tuple[dict, dict]:
              "malware": malware_ip, "phishing": phishing_ip}, audit)
 
 
-def _ir_domains(h: fetch.Harvest, psl_rules: list[str]
-                ) -> tuple[DomainSet, int | None]:
-    """`ir`: bootmortis ∪ v2fly CATEGORY-IR, both ccTLDs, PSL-filtered.
+def load_curated_domains(path: str) -> list[str]:
+    """Read a curated domain file (one domain per line, `#` comments allowed)."""
+    if not path or not os.path.isfile(path):
+        return []
+    out = []
+    with open(path, encoding="utf-8-sig") as fh:
+        for line in fh:
+            line = line.split("#", 1)[0].strip()
+            if not line:
+                continue
+            cleaned = clean_domain(line)
+            if cleaned:
+                out.append(cleaned)
+    return out
+
+
+def _ir_domains(h: fetch.Harvest, psl_rules: list[str],
+                curated_add: list[str] = (),
+                curated_exclude: set[str] = frozenset()
+                ) -> tuple[DomainSet, int | None, int, int]:
+    """`ir`: bootmortis ∪ v2fly IR categories ∪ curated_add − curated_exclude.
 
     The PSL filter runs after the ccTLD collapse, so a name under .ir is not
     counted (the `ir` rule covers it either way), and before pruning, which
     would otherwise drop foo.dyndns.org as covered by dyndns.org just before
     the filter removes dyndns.org. Hence two passes: collapse without
     pruning, filter the suffixes, then build again with pruning. Exact-match
-    names are left alone; the filter is about suffix rules.
+    names are left alone by the PSL filter; curated_exclude removes both.
     """
     title = DOMAIN_ROLES["ir"][0]
     credits = ["Iran Hosted Domains (MIT)", "v2fly domain-list-community (MIT)"]
     suffix, full = [], []
-    for value in h.get("ir-domains") + h.get("ir-v2fly"):
+    for value in h.get("ir-domains"):
         if value.startswith("full:"):
             full.append(value[len("full:"):])
         else:
             suffix.append(value)
-    raw = make_domainset("ir", title, suffix=suffix, full=full,
-                         sources=credits, collapse_tld=IR_TLDS, prune=False)
+    for value in h.get("ir-v2fly"):
+        # ads-ir: and private: buckets from dlc.dat belong to other sets
+        if value.startswith(("ads-ir:", "private:")):
+            continue
+        if value.startswith("full:"):
+            full.append(value[len("full:"):])
+        else:
+            suffix.append(value)
+
+    raw_upstream = make_domainset("ir", title, suffix=suffix, full=full,
+                                  sources=credits, collapse_tld=IR_TLDS,
+                                  prune=False)
+    curated_new = [d for d in curated_add
+                   if d not in raw_upstream.suffix
+                   and not any(d.endswith("." + t) or d == t for t in IR_TLDS)]
+    raw = make_domainset("ir", title,
+                         suffix=list(raw_upstream.suffix) + curated_new,
+                         full=raw_upstream.full, sources=credits,
+                         collapse_tld=IR_TLDS, prune=False)
+    raw.malformed = raw_upstream.malformed
+
+    excluded_count = 0
+    if curated_exclude:
+        before = len(raw.suffix) + len(raw.full)
+        raw.suffix -= curated_exclude
+        raw.full -= curated_exclude
+        excluded_count = before - (len(raw.suffix) + len(raw.full))
+
     if psl_rules:
         kept, removed = psl_filter(raw.suffix, psl_rules,
                                    keep=IR_PLATFORM_SUFFIXES)
@@ -399,14 +503,41 @@ def _ir_domains(h: fetch.Harvest, psl_rules: list[str]
     ds = make_domainset("ir", title, suffix=kept, full=raw.full,
                         sources=credits, collapse_tld=IR_TLDS)
     ds.malformed = raw.malformed
-    return ds, removed
+    return ds, removed, len(curated_new), excluded_count
 
 
-def build_domain_sets(h: fetch.Harvest) -> tuple[dict[str, DomainSet], dict]:
+def build_domain_sets(h: fetch.Harvest,
+                      data_dir: str | None = DATA_DIR
+                      ) -> tuple[dict[str, DomainSet], dict]:
     out: dict[str, DomainSet] = {}
     psl_rules = h.get("psl")
 
-    out["ir"], psl_removed = _ir_domains(h, psl_rules)
+    curated_add = (load_curated_domains(os.path.join(data_dir, "ir-domains-add.txt"))
+                   if data_dir else [])
+    curated_exclude = (set(load_curated_domains(os.path.join(data_dir, "ir-domains-exclude.txt")))
+                       if data_dir else set())
+
+    out["ir"], psl_removed, curated_added, curated_excluded = _ir_domains(
+        h, psl_rules, curated_add=curated_add, curated_exclude=curated_exclude)
+
+    # Split non-IR buckets extracted from v2fly dlc.dat at zero extra cost
+    v2_ads_ir, v2_priv_suffix, v2_priv_full = [], [], []
+    for value in h.get("ir-v2fly"):
+        if value.startswith("ads-ir:"):
+            v = value[len("ads-ir:"):]
+            v2_ads_ir.append(v[len("full:"):] if v.startswith("full:") else v)
+        elif value.startswith("private:"):
+            v = value[len("private:"):]
+            if v.startswith("full:"):
+                v2_priv_full.append(v[len("full:"):])
+            else:
+                v2_priv_suffix.append(v)
+
+    out["private"] = make_domainset(
+        "private", DOMAIN_ROLES["private"][0],
+        suffix=list(PRIVATE_DOMAINS) + v2_priv_suffix,
+        full=v2_priv_full,
+        sources=["RFC 6761 / 8375", "v2fly domain-list-community (MIT)"])
 
     # AdGuard's own allowlists: names it found to break real sites when
     # blocked. An entry that is a single label or a public suffix is
@@ -415,22 +546,29 @@ def build_domain_sets(h: fetch.Harvest) -> tuple[dict[str, DomainSet], dict]:
              set(h.get("allow-adguard-exceptions")))
     suffixes = public_suffixes(psl_rules)
     persian = (h.get("ads-persian-hosts") + h.get("ads-persian-ads") +
-               h.get("ads-persian-trackers"))
+               h.get("ads-persian-trackers") + v2_ads_ir)
     allow_removed = {}
     for slug, names, credits in (
-            ("ads-ir", persian, ["PersianBlocker (AGPL-3.0)"]),
+            ("ads-ir", persian,
+             ["PersianBlocker (AGPL-3.0)", "v2fly domain-list-community (MIT)"]),
             ("ads", persian + h.get("ads-hagezi"),
-             ["PersianBlocker (AGPL-3.0)", "HaGeZi Multi LIGHT (GPL-3.0)"])):
+             ["PersianBlocker (AGPL-3.0)", "v2fly domain-list-community (MIT)",
+              "HaGeZi Multi LIGHT (GPL-3.0)"])):
         kept, allow_removed[slug] = subtract_allowlist(set(names), allow,
                                                        suffixes)
         out[slug] = make_domainset(slug, DOMAIN_ROLES[slug][0], suffix=kept,
                                    sources=credits)
     daudit = {"psl_removed": psl_removed,
+              "curated_ir_added": curated_added,
+              "curated_ir_excluded": curated_excluded,
               "allowlist_removed": {"ads": allow_removed["ads"],
                                     "ads-ir": allow_removed["ads-ir"]}}
     if psl_removed is not None:
         log(f"  PSL filter: {psl_removed} shared-hosting suffixes removed "
             f"from ir")
+    if curated_added or curated_excluded:
+        log(f"  curated overrides: +{curated_added} added, "
+            f"-{curated_excluded} excluded from ir")
     log(f"  AdGuard allowlist: {allow_removed['ads']} names removed from ads, "
         f"{allow_removed['ads-ir']} from ads-ir")
 
@@ -452,12 +590,14 @@ def build_domain_sets(h: fetch.Harvest) -> tuple[dict[str, DomainSet], dict]:
         suffix=h.get("nsfw-stevenblack") + h.get("nsfw-stevenblack-gambling"),
         sources=["StevenBlack unified hosts (MIT)"])
 
-    combined, combined_sources = [], []
+    combined_suffix, combined_full, combined_sources = [], [], []
     for key in ("ads", "malware", "phishing", "cryptominers"):
-        combined += out[key].plain_domains()
+        combined_suffix += list(out[key].suffix)
+        combined_full += list(out[key].full)
         combined_sources += out[key].sources
     out["block-all"] = make_domainset(
-        "block-all", DOMAIN_ROLES["block-all"][0], suffix=combined,
+        "block-all", DOMAIN_ROLES["block-all"][0],
+        suffix=combined_suffix, full=combined_full,
         sources=sorted(set(combined_sources)))
 
     for slug, ds in out.items():
@@ -476,7 +616,8 @@ def build_dat_files(ctx: BuildContext, ips: dict, doms: dict) -> int:
     _write_bin(ctx, "xray/geoip.dat", geodat.encode_geoip(geoip),
                sum(len(v) for v in geoip.values()))
 
-    lite_ip = {k: geoip[k] for k in ("ir", "private") if k in geoip}
+    lite_ip = {k: geoip[k] for k in ("ir", "ir-cdn", "ir-full", "private")
+               if k in geoip}
     _write_bin(ctx, "xray/geoip-lite.dat", geodat.encode_geoip(lite_ip),
                sum(len(v) for v in lite_ip.values()))
 
@@ -487,28 +628,36 @@ def build_dat_files(ctx: BuildContext, ips: dict, doms: dict) -> int:
                 [(geodat.REGEX, n) for n in sorted(d.regex)])
 
     # block-all is the union of four categories already present; including it
-    # would roughly double the file for no new information.
+    # would roughly double the file for no new information. Compatibility
+    # aliases let existing v2rayN / Xray configs work unchanged.
     geosite = {slug: as_domains(d) for slug, d in doms.items()
                if slug != "block-all"}
     geosite["category-ads-all"] = geosite["ads"]
+    if "ads-ir" in geosite:
+        geosite["category-ads-ir"] = geosite["ads-ir"]
+    geosite["category-ir"] = geosite["ir"]
+    geosite["tld-ir"] = [(geodat.ROOT_DOMAIN, t) for t in IR_TLDS]
     geosite_blob = geodat.encode_geosite(geosite)
     _write_bin(ctx, "xray/geosite.dat", geosite_blob,
                sum(len(v) for v in geosite.values()))
 
-    lite_site = {k: geosite[k] for k in ("ir", "ads-ir") if k in geosite}
+    lite_site = {k: geosite[k]
+                 for k in ("ir", "category-ir", "tld-ir", "ads-ir", "private")
+                 if k in geosite}
     _write_bin(ctx, "xray/geosite-lite.dat", geodat.encode_geosite(lite_site),
                sum(len(v) for v in lite_site.values()))
 
     sec_site = {k: geosite[k] for k in
-                ("ads", "malware", "phishing", "cryptominers") if k in geosite}
+                ("ads", "category-ads-all", "malware", "phishing",
+                 "cryptominers") if k in geosite}
     _write_bin(ctx, "xray/geosite-security.dat", geodat.encode_geosite(sec_site),
                sum(len(v) for v in sec_site.values()))
 
-    check = {c.code: c.domains for c in geodat.decode_geosite(
-        open(ctx.path("xray/geosite.dat"), "rb").read())}
+    with open(ctx.path("xray/geosite.dat"), "rb") as fh:
+        check = {c.code: c.domains for c in geodat.decode_geosite(fh.read())}
     assert check["IR"] == geosite["ir"], "geosite.dat failed round-trip"
-    check_ip = {c.code: c.networks for c in geodat.decode_geoip(
-        open(ctx.path("xray/geoip.dat"), "rb").read())}
+    with open(ctx.path("xray/geoip.dat"), "rb") as fh:
+        check_ip = {c.code: c.networks for c in geodat.decode_geoip(fh.read())}
     assert check_ip["IR"] == geoip["ir"], "geoip.dat failed round-trip"
     log("  xray .dat round-trip verified")
     return len(geosite_blob)
@@ -585,12 +734,14 @@ def compile_mihomo(ctx: BuildContext, require: bool) -> int:
             [exe, "convert-ruleset", behavior, "text", src, dst],
             capture_output=True, text=True)
         if res.returncode != 0:
-            log(f"  warn: mihomo failed on {name}: "
-                f"{(res.stderr or res.stdout).strip()[:200]}")
+            err = (res.stderr or res.stdout).strip()[:200]
             # a crashed convert can leave a partial file, and an empty
             # release asset fails the whole upload
             if os.path.exists(dst):
                 os.remove(dst)
+            if require:
+                sys.exit(f"ERROR: mihomo compile failed for {name}: {err}")
+            log(f"  warn: mihomo failed on {name}: {err}")
             continue
         ctx.record(f"mihomo/{name[:-5]}.mrs", 0)
         made += 1
@@ -601,7 +752,8 @@ def compile_mihomo(ctx: BuildContext, require: bool) -> int:
 def write_configs(ctx: BuildContext, base_url: str) -> None:
     xray = {
         "_comment": "Xray / v2ray routing block. Place geoip.dat and "
-                    "geosite.dat next to the core binary or in its asset dir.",
+                    "geosite.dat next to the core binary or in its asset dir. "
+                    "Swap geoip:ir for geoip:ir-full to also direct Iranian CDN foreign edges.",
         "domainStrategy": "IPIfNonMatch",
         "rules": [
             {"type": "field", "outboundTag": "block",
@@ -609,30 +761,35 @@ def write_configs(ctx: BuildContext, base_url: str) -> None:
                         "geosite:cryptominers"]},
             {"type": "field", "outboundTag": "block",
              "ip": ["geoip:malware", "geoip:phishing"]},
-            {"type": "field", "outboundTag": "direct", "domain": ["geosite:ir"]},
+            {"type": "field", "outboundTag": "direct",
+             "domain": ["geosite:ir", "geosite:private"]},
             {"type": "field", "outboundTag": "direct",
              "ip": ["geoip:ir", "geoip:private"]},
         ],
     }
     emitters.write_json(ctx, "xray/routing-rules.json", xray, 4)
 
+    cdn_url = "https://cdn.jsdelivr.net/gh/Arman2122/IR-Geo-DB@dist"
+    singbox_base = cdn_url if "raw.githubusercontent.com" in base_url else base_url
     singbox = {
         "route": {
             "rules": [
                 {"rule_set": ["geosite-ads", "geosite-malware",
                               "geosite-phishing"], "action": "reject"},
-                {"rule_set": ["geosite-ir", "geoip-ir"], "outbound": "direct"},
+                {"rule_set": ["geosite-ir", "geosite-private",
+                              "geoip-ir", "geoip-private"], "outbound": "direct"},
             ],
             "rule_set": [
                 {"type": "remote", "tag": tag, "format": "binary",
-                 "url": f"{base_url}/sing-box/rule-set/{tag}.srs",
+                 "url": f"{singbox_base}/sing-box/rule-set/{tag}.srs",
                  "download_detour": "direct", "update_interval": "1d"}
-                for tag in ("geosite-ir", "geoip-ir", "geosite-ads",
-                            "geosite-malware", "geosite-phishing")
+                for tag in ("geosite-ir", "geosite-private", "geoip-ir",
+                            "geoip-private", "geosite-ads", "geosite-malware",
+                            "geosite-phishing")
             ],
         },
     }
-    emitters.write_json(ctx, "sing-box/config-snippet.json", singbox, 5)
+    emitters.write_json(ctx, "sing-box/config-snippet.json", singbox, 7)
 
     clash_yaml = ["rule-providers:"]
     for tag, behavior in (("ir-domain", "domain"), ("ir-ip", "ipcidr"),
@@ -703,6 +860,16 @@ def source_provenance(h: fetch.Harvest) -> dict:
     return out
 
 
+def _file_sha256(path: str) -> tuple[int, str]:
+    h = hashlib.sha256()
+    size = 0
+    with open(path, "rb") as fh:
+        while chunk := fh.read(65536):
+            size += len(chunk)
+            h.update(chunk)
+    return size, h.hexdigest()
+
+
 def write_metadata(ctx: BuildContext, ips: dict, doms: dict, h: fetch.Harvest,
                    audit: dict) -> dict:
     stats = {
@@ -717,10 +884,21 @@ def write_metadata(ctx: BuildContext, ips: dict, doms: dict, h: fetch.Harvest,
         "audit": audit,
     }
     emitters.write_json(ctx, "stats.json", stats, 0)
+
+    # Enrich manifest entries with exact byte sizes and SHA-256 digests so
+    # automated clients can verify or skip unchanged files cleanly.
+    enriched = []
+    for rec in sorted(ctx.manifest, key=lambda r: r["file"]):
+        fp = os.path.join(ctx.outdir, rec["file"])
+        if os.path.isfile(fp):
+            size, digest = _file_sha256(fp)
+            enriched.append({**rec, "bytes": size, "sha256": digest})
+        else:
+            enriched.append(rec)
     emitters.write_json(ctx, "manifest.json", {
         "version": ctx.version, "generated": ctx.timestamp,
-        "files": sorted(ctx.manifest, key=lambda r: r["file"]),
-    }, len(ctx.manifest))
+        "files": enriched,
+    }, len(enriched))
 
     lines = []
     for root, _dirs, files in os.walk(ctx.outdir):
@@ -729,7 +907,8 @@ def write_metadata(ctx: BuildContext, ips: dict, doms: dict, h: fetch.Harvest,
             rel = os.path.relpath(full, ctx.outdir).replace(os.sep, "/")
             if rel == "SHA256SUMS":
                 continue
-            lines.append(f"{hashlib.sha256(open(full, 'rb').read()).hexdigest()}  {rel}")
+            _, digest = _file_sha256(full)
+            lines.append(f"{digest}  {rel}")
     with open(os.path.join(ctx.outdir, "SHA256SUMS"), "w", encoding="utf-8",
               newline="\n") as fh:
         fh.write("\n".join(sorted(lines)) + "\n")
@@ -765,6 +944,7 @@ RELEASE_ASSETS: list[tuple[str, str, str]] = [
     ("unbound", "*.conf", "unbound-"),
     ("smartdns", "*.conf", "smartdns-"),
     ("wireguard", "*.conf", "wireguard-"),
+    ("amnezia", "*.json", "amnezia-"),
     # sing-box JSON sources and the json/ dumps are omitted: they restate the
     # compiled .srs and the text lists. Both remain on the dist branch.
 ]
@@ -811,8 +991,8 @@ def stage_release(ctx: BuildContext, outdir_parent: str) -> str:
     for name in sorted(os.listdir(staging)):
         if name == "SHA256SUMS":
             continue
-        digest = hashlib.sha256(open(os.path.join(staging, name), "rb").read())
-        sums.append(f"{digest.hexdigest()}  {name}")
+        _, digest = _file_sha256(os.path.join(staging, name))
+        sums.append(f"{digest}  {name}")
     with open(os.path.join(staging, "SHA256SUMS"), "w", encoding="utf-8",
               newline="\n") as fh:
         fh.write("\n".join(sums) + "\n")
@@ -855,6 +1035,18 @@ def sanity_check(ips: dict, doms: dict) -> None:
         problems.append("2.144.0.0/14 (TCI) missing from the Iranian set")
     if any(ipaddress.ip_address("8.8.8.8") in n for n in ir_nets):
         problems.append("8.8.8.8 is inside the Iranian set — source contamination")
+    private_v4 = [ipaddress.ip_network(p) for p in PRIVATE_RANGES if ":" not in p]
+    if any(n.overlaps(p) for n in ir_nets for p in private_v4):
+        problems.append("RFC 1918 / private range leaked into the Iranian IPv4 set")
+    for tld in IR_TLDS:
+        if tld not in doms["ir"].suffix:
+            problems.append(f"collapsed TLD {tld!r} missing from ir domains")
+    for anchor in ("digikala.com", "aparat.com"):
+        if anchor not in doms["ir"].suffix:
+            problems.append(f"anchor domain {anchor!r} missing from ir domains")
+    for bad_dom in ("google.com", "cloudflare.com", "asia.pool.ntp.org"):
+        if bad_dom in doms["ir"].suffix or bad_dom in doms["ir"].full:
+            problems.append(f"non-Iranian domain {bad_dom!r} leaked into ir domains")
 
     if problems:
         for p in problems:
@@ -1040,8 +1232,11 @@ def main() -> None:
     enforce_shrink_limits(ips, doms, audit, previous_stats(), args.allow_shrink)
 
     log("\n[5/7] emitting formats")
+    private_nets = [ipaddress.ip_network(p) for p in PRIVATE_RANGES]
     for slug, s in ips.items():
         emitters.emit_ipset(ctx, s, IP_ROLES[slug][1])
+    for slug in ("ir", "ir-full"):
+        emitters.ip_wireguard_exclude(ctx, ips[slug], private_nets)
     audit["format_profiles"] = {}
     for slug, d in doms.items():
         profile = "aggregate" if slug == "block-all" else "auto"

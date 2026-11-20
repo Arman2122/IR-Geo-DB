@@ -23,6 +23,7 @@ import gzip
 import ipaddress
 import json
 import re
+import socket
 import sys
 from dataclasses import dataclass
 from typing import NamedTuple
@@ -81,30 +82,57 @@ class Source:
 # is taken from the BGP table. `lists` are the provider's own published
 # ranges, which are read as well. A provider with no organisation owns no ASN
 # of its own; one with no list publishes none.
+#
+# `domestic` marks offshore-registered Iranian domestic hosting networks whose
+# BGP transit is exclusively inside Iran (no foreign PoPs): their ASNs count
+# as Iranian in bgp.adjust so their prefixes belong to `ir` as well as
+# `ir-cdn`. Global / foreign-edge CDNs keep `domestic: False`, so their
+# foreign-registered ASNs stay neutral in `ir` and ship in `ir-cdn`/`ir-full`.
 PROVIDERS: dict[str, dict] = {
     "ArvanCloud": {"orgs": ["ORG-NAAP1-RIPE", "ORG-NAAC1-RIPE", "ORG-AGTL2-RIPE"],
-                   "lists": ["arvancloud"]},
-    "Sotoon": {"orgs": ["ORG-HUCC1-RIPE", "ORG-IB117-RIPE"], "lists": []},
-    "Derak": {"orgs": ["ORG-ENDC1-RIPE"], "lists": ["derak-v4", "derak-v6"]},
-    "IranServer": {"orgs": ["ORG-GWSN7-RIPE"], "lists": ["iranserver"]},
-    "MizbanCloud": {"orgs": ["ORG-SAML1-RIPE"], "lists": ["mizbancloud"]},
-    "ParsPack": {"orgs": [], "lists": ["parspack"]},
+                   "lists": ["arvancloud"], "domestic": False},
+    "Sotoon": {"orgs": ["ORG-HUCC1-RIPE", "ORG-IB117-RIPE"],
+               "lists": ["sotoon"], "domestic": False},
+    "Derak": {"orgs": ["ORG-ENDC1-RIPE"],
+              "lists": ["derak-v4", "derak-v6"], "domestic": False},
+    "IranServer": {"orgs": ["ORG-GWSN7-RIPE"],
+                   "lists": ["iranserver"], "domestic": False},
+    "MizbanCloud": {"orgs": ["ORG-SAML1-RIPE"],
+                    "lists": ["mizbancloud"], "domestic": False},
+    "ParsPack": {"orgs": [], "lists": ["parspack"], "domestic": False},
+    "Liara": {"orgs": ["ORG-TSAL5-RIPE"], "lists": [], "domestic": False},
+    "Hamravesh": {"orgs": ["ORG-PFHR1-RIPE"], "lists": [], "domestic": False},
+    "Server.ir": {"orgs": ["ORG-MR252-RIPE"], "lists": [], "domestic": True},
+    "Dorna": {"orgs": ["ORG-DNL22-RIPE"], "lists": [], "domestic": True},
+    "Regika": {"orgs": ["ORG-SC348-RIPE"], "lists": [], "domestic": True},
 }
 
-# (rir, url, min_entries, min_bytes). `entries` is the number of Iranian
-# prefixes and ASNs the file yields. Only RIPE NCC has Iranian records in
-# any number, so the others keep min_entries at 0 and rely on min_bytes: a
-# file that is not the full delegation list is rejected on size.
+# (rir, url, mirrors, min_entries, min_bytes). `entries` is the number of
+# Iranian prefixes and ASNs the file yields. Only RIPE NCC has Iranian records
+# in any number, so the others keep min_entries at 0 and rely on min_bytes: a
+# file that is not the full delegation list is rejected on size. Each RIR
+# publishes cross-RIR mirrors of the other RIRs' extended statistics files.
 RIR_STATS = [
-    ("ripencc", "https://ftp.ripe.net/pub/stats/ripencc/delegated-ripencc-extended-latest",
+    ("ripencc",
+     "https://ftp.ripe.net/pub/stats/ripencc/delegated-ripencc-extended-latest",
+     ("https://ftp.lacnic.net/pub/stats/ripencc/delegated-ripencc-extended-latest",
+      "https://ftp.apnic.net/stats/ripe-ncc/delegated-ripencc-extended-latest"),
      2_300, 12_000_000),  # 3,407 entries, 18.1 MB on 2026-10-23
-    ("apnic", "https://ftp.apnic.net/stats/apnic/delegated-apnic-extended-latest",
+    ("apnic",
+     "https://ftp.apnic.net/stats/apnic/delegated-apnic-extended-latest",
+     ("https://ftp.ripe.net/pub/stats/apnic/delegated-apnic-extended-latest",),
      0, 6_400_000),  # 0 entries, 9.3 MB on 2026-10-23
-    ("arin", "https://ftp.arin.net/pub/stats/arin/delegated-arin-extended-latest",
+    ("arin",
+     "https://ftp.arin.net/pub/stats/arin/delegated-arin-extended-latest",
+     ("https://ftp.ripe.net/pub/stats/arin/delegated-arin-extended-latest",),
      0, 9_000_000),  # 0 entries, 12.9 MB on 2026-10-23
-    ("lacnic", "https://ftp.lacnic.net/pub/stats/lacnic/delegated-lacnic-extended-latest",
+    ("lacnic",
+     "https://ftp.lacnic.net/pub/stats/lacnic/delegated-lacnic-extended-latest",
+     ("https://ftp.ripe.net/pub/stats/lacnic/delegated-lacnic-extended-latest",),
      0, 3_200_000),  # 0 entries, 4.6 MB on 2026-10-23
-    ("afrinic", "https://ftp.afrinic.net/pub/stats/afrinic/delegated-afrinic-extended-latest",
+    ("afrinic",
+     "https://ftp.afrinic.net/pub/stats/afrinic/delegated-afrinic-extended-latest",
+     ("https://ftp.ripe.net/pub/stats/afrinic/delegated-afrinic-extended-latest",),
      0, 700_000),  # 0 entries, 1.0 MB on 2026-10-23
 ]
 
@@ -115,14 +143,19 @@ RIR_STATS = [
 _RIPE_ORG_URL = ("https://rest.db.ripe.net/search.json?query-string={org}"
                  "&inverse-attribute=org&type-filter=aut-num&flags=no-referenced")
 _RIPE_ORG_FLOOR = {
-    "ORG-NAAP1-RIPE": 1,  # 2 found on 2026-10-23
-    "ORG-NAAC1-RIPE": 1,  # 1 found on 2026-10-23
-    "ORG-AGTL2-RIPE": 1,  # 3 found on 2026-10-23
-    "ORG-HUCC1-RIPE": 2,  # 4 found on 2026-10-23
-    "ORG-IB117-RIPE": 1,  # 1 found on 2026-10-23
-    "ORG-ENDC1-RIPE": 1,  # 2 found on 2026-10-23
-    "ORG-GWSN7-RIPE": 1,  # 3 found on 2026-10-23
-    "ORG-SAML1-RIPE": 1,  # 3 found on 2026-10-23
+    "ORG-NAAP1-RIPE": 1,   # 2 found on 2026-10-23
+    "ORG-NAAC1-RIPE": 1,   # 1 found on 2026-10-23
+    "ORG-AGTL2-RIPE": 1,   # 3 found on 2026-10-23
+    "ORG-HUCC1-RIPE": 2,   # 4 found on 2026-10-23
+    "ORG-IB117-RIPE": 1,   # 1 found on 2026-10-23
+    "ORG-ENDC1-RIPE": 1,   # 2 found on 2026-10-23
+    "ORG-GWSN7-RIPE": 1,   # 3 found on 2026-10-23
+    "ORG-SAML1-RIPE": 1,   # 3 found on 2026-10-23
+    "ORG-TSAL5-RIPE": 1,   # 1 found on 2026-11-20 (Liara, AS213852)
+    "ORG-PFHR1-RIPE": 1,   # 1 found on 2026-11-20 (Hamravesh, AS214735)
+    "ORG-MR252-RIPE": 1,   # 1 found on 2026-11-20 (Server.ir, AS39368)
+    "ORG-DNL22-RIPE": 1,   # 2 found on 2026-11-20 (Dorna, AS48592 / AS210134)
+    "ORG-SC348-RIPE": 1,   # 1 found on 2026-11-20 (Regika, AS203739)
 }
 
 HAGEZI = "hagezi/dns-blocklists"
@@ -148,8 +181,8 @@ SOURCES: list[Source] = [
     # ir-domains: without it there is no Iranian address set at all.
     *[
         Source(key=f"rir-{rir}", name=f"{rir.upper()} delegated statistics",
-               url=url, parser="rir", kind="ip", tier="registry",
-               license="Registry public data",
+               url=url, mirrors=mirrors, parser="rir", kind="ip",
+               tier="registry", license="Registry public data",
                homepage="https://www.nro.net/about/rirs/statistics/",
                optional=(rir != "ripencc"),
                min_entries=min_entries, min_bytes=min_bytes,
@@ -161,7 +194,7 @@ SOURCES: list[Source] = [
                # would stop every release over a merely late file.
                max_age_days=30, max_stale_days=14,
                note="authoritative country delegation")
-        for rir, url, min_entries, min_bytes in RIR_STATS
+        for rir, url, mirrors, min_entries, min_bytes in RIR_STATS
     ],
 
     # ---- IP: BGP. Origin: authority (RIPE NCC's RIS collectors), used by
@@ -187,6 +220,21 @@ SOURCES: list[Source] = [
            min_entries=180_000, min_bytes=930_000,  # 267,407 entries, 1.3 MB on 2026-10-23
            max_age_days=3, max_stale_days=14),
 
+    # ---- IP: RPKI Validated ROA Payloads (VRPs). Origin: authority (global
+    # RPKI Trust Anchors validated by OpenBSD rpki-client; Cloudflare's
+    # identical schema endpoint as mirror). Used by bgp.py for RFC 6811 Route
+    # Origin Validation: rescues RPKI-valid Iranian sub-assignments under
+    # foreign supernets, rejects foreign-ROA-invalid Iranian announcements,
+    # and stops RPKI-invalid foreign routes from removing Iranian space.
+    Source(key="rpki-vrps", name="RPKI Validated ROA Payloads (rpki-client)",
+           parser="rpki_json", kind="ip", tier="registry", optional=True,
+           url="https://console.rpki-client.org/vrps.json",
+           mirrors=("https://rpki.cloudflare.com/rpki.json",),
+           license="ISC / RPKI public data",
+           homepage="https://www.rpki-client.org",
+           min_entries=720_000, min_bytes=75_000_000,  # 1,037,834 entries, 108.2 MB on 2026-11-20
+           max_age_days=3, max_stale_days=7),
+
     # ---- IP: provider ASNs. Origin: authority (the RIPE database), derived
     # by us: the ASNs registered to each provider's organisation, which bgp.py
     # then turns into the prefixes they announce. See PROVIDERS above.
@@ -210,6 +258,12 @@ SOURCES: list[Source] = [
            homepage="https://www.arvancloud.ir/en/dev/ips",
            license="All rights reserved", optional=True,
            min_entries=7, min_bytes=110,  # 14 entries, 220 bytes on 2026-10-23
+           max_stale_days=90),
+    Source(key="sotoon", name="Sotoon CDN", parser="cidr", kind="ip",
+           tier="provider", url="https://edge.sotoon.ir/ip-list.txt",
+           homepage="https://sotoon.ir", license="Provider-published",
+           optional=True,
+           min_entries=50, min_bytes=900,  # 76 entries, 1,323 bytes on 2026-11-20
            max_stale_days=90),
     Source(key="parspack", name="ParsPack CDN", parser="cidr", kind="ip",
            tier="provider", url="https://parspack.com/cdnips.txt",
@@ -312,6 +366,20 @@ SOURCES: list[Source] = [
            homepage="https://gcore.com",
            min_entries=1_200, min_bytes=29_000,  # 1,836 entries, 42 KB on 2026-10-23
            max_stale_days=30),
+    Source(key="cloud-oracle", name="Oracle Cloud", parser="oracle_json",
+           kind="ip", tier="cloud",
+           url="https://docs.oracle.com/en-us/iaas/tools/public_ip_ranges.json",
+           optional=True, license="Provider-published",
+           homepage="https://docs.oracle.com/en-us/iaas/Content/General/Concepts/addressranges.htm",
+           min_entries=780, min_bytes=160_000,  # 1,118 entries, 236 KB on 2026-11-20
+           max_stale_days=30),
+    Source(key="cloud-digitalocean", name="DigitalOcean", parser="csv_cidr",
+           kind="ip", tier="cloud",
+           url="https://digitalocean.com/geo/google.csv",
+           optional=True, license="Provider-published",
+           homepage="https://docs.digitalocean.com/products/platform/",
+           min_entries=870, min_bytes=37_000,  # 1,243 entries, 53 KB on 2026-11-20
+           max_stale_days=30),
 
     # ---- IP: threat feeds, for firewall drop rules rather than DNS. A
     # stale threat feed is worth little, so a stored copy stands in for 7
@@ -353,13 +421,15 @@ SOURCES: list[Source] = [
                     "https://cdn.jsdelivr.net/gh/bootmortis/iran-hosted-domains@release/domains.txt"),
            min_entries=88_000, min_bytes=1_200_000,  # 127,069 entries, 1.8 MB on 2026-10-23
            max_stale_days=30),
-    # v2fly's CATEGORY-IR is a hand-curated list from a different community
-    # (origin: maintainer), read with our own dlc.dat decoder.
+    # v2fly's Iranian categories, Persian ad category, and private domains,
+    # hand-curated from a different community (origin: maintainer), read with
+    # our own dlc.dat decoder at zero extra requests.
     Source(key="ir-v2fly", name="v2fly domain-list-community (category-ir)",
            parser="v2fly_dlc", kind="domain", tier="blocklist", license="MIT",
            optional=True, homepage="https://github.com/v2fly/domain-list-community",
            url="https://github.com/v2fly/domain-list-community/releases/latest/download/dlc.dat",
-           min_entries=130, min_bytes=1_600_000,  # 190 entries, 2.4 MB on 2026-10-23
+           mirrors=("https://cdn.jsdelivr.net/gh/v2fly/domain-list-community@release/dlc.dat",),
+           min_entries=350, min_bytes=1_600_000,  # 505 entries (IR + ads-ir + private), 2.4 MB on 2026-11-20
            max_stale_days=30),
     # The Public Suffix List (origin: authority, Mozilla). Used only as a
     # filter, so a shared platform such as a dynamic-DNS suffix is never
@@ -631,6 +701,82 @@ def parse_gcore_json(raw: bytes) -> Parsed:
     return _networks(data.get("addresses", []) + data.get("addresses_v6", []))
 
 
+def parse_oracle_json(raw: bytes) -> Parsed:
+    """Oracle Cloud Infrastructure public_ip_ranges.json."""
+    data = json.loads(_text(raw))
+    items = [entry["cidr"] for region in data.get("regions", [])
+             for entry in region.get("cidrs", []) if "cidr" in entry]
+    return _networks(items)
+
+
+def parse_csv_cidr(raw: bytes) -> Parsed:
+    """First comma-separated column of a geofeed / provider CSV (e.g. DigitalOcean)."""
+    items = []
+    for line in _text(raw).splitlines():
+        line = line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        first = line.split(",", 1)[0].strip()
+        if first:
+            items.append(first)
+    return _networks(items)
+
+
+def parse_rpki_json(raw: bytes) -> Parsed:
+    """Read RPKI VRPs from rpki-client / Cloudflare rpki.json.
+
+    Values are ``<asn> <prefix> <maxLength>``. Both integer ASNs (13335) and
+    prefixed strings ("AS13335") are accepted. Uses socket.inet_pton on the
+    fast path because the global table holds over a million VRPs.
+    """
+    if raw[:2] == b"\x1f\x8b":
+        raw = gzip.decompress(raw)
+    data = json.loads(_text(raw))
+    roas = data.get("roas")
+    if not isinstance(roas, list):
+        raise ValueError("missing 'roas' list")
+    out, bad = [], 0
+    for item in roas:
+        if not isinstance(item, dict):
+            bad += 1
+            continue
+        raw_asn = item.get("asn")
+        prefix = item.get("prefix")
+        maxl = item.get("maxLength")
+        if not isinstance(prefix, str) or isinstance(maxl, bool) or not isinstance(maxl, int):
+            bad += 1
+            continue
+        try:
+            if isinstance(raw_asn, bool):
+                raise ValueError
+            if isinstance(raw_asn, int):
+                asn = raw_asn
+            elif isinstance(raw_asn, str):
+                s = raw_asn.strip().upper()
+                asn = int(s[2:] if s.startswith("AS") else s)
+            else:
+                raise ValueError
+            if not 0 <= asn <= _MAX_ASN:
+                raise ValueError
+            addr, sep, length = prefix.partition("/")
+            if not sep:
+                raise ValueError
+            version = 6 if ":" in addr else 4
+            bits = 128 if version == 6 else 32
+            plen = int(length)
+            if not 0 <= plen <= maxl <= bits:
+                raise ValueError
+            packed = socket.inet_pton(socket.AF_INET6 if version == 6 else socket.AF_INET, addr)
+            host = (1 << (bits - plen)) - 1
+            if int.from_bytes(packed, "big") & host:
+                prefix = str(ipaddress.ip_network(prefix, strict=False))
+        except (ValueError, OSError):
+            bad += 1
+            continue
+        out.append(f"{asn} {prefix} {maxl}")
+    return Parsed(out, bad)
+
+
 def parse_ris(raw: bytes) -> Parsed:
     """Read a RIPE RIS whois dump: origin, prefix and peer count per row.
 
@@ -684,15 +830,27 @@ def parse_ripe_org_asns(raw: bytes) -> Parsed:
 
 
 def parse_v2fly_dlc(raw: bytes) -> Parsed:
-    """Pull CATEGORY-IR out of a v2fly dlc.dat.
+    """Pull Iranian, Persian-ad, and private categories out of v2fly dlc.dat.
 
-    `domain` entries come out as the bare name and `full` entries as
-    "full:<name>", so a later stage can tell a suffix from an exact match.
-    Keywords and regexps cannot be expressed as a name and are skipped.
+    Iranian categories (CATEGORY-IR, IR, TLD-IR, and any CATEGORY-*-IR other
+    than CATEGORY-ADS-IR) come out as bare names (`domain`) or `full:<name>`.
+    CATEGORY-ADS-IR entries are prefixed `ads-ir:<name>`, and PRIVATE entries
+    `private:<name>` (or `private:full:<name>`), so build.py can route each
+    bucket without fetching dlc.dat a second time. Keywords and regexps are
+    skipped.
     """
-    out, bad = [], 0
+    out, seen, bad = [], set(), 0
     for cat in geodat.decode_geosite(raw):
-        if cat.code.upper() != "CATEGORY-IR":
+        code = cat.code.upper()
+        if code in ("CATEGORY-IR", "IR", "TLD-IR") or (
+                code.startswith("CATEGORY-") and code.endswith("-IR")
+                and code != "CATEGORY-ADS-IR"):
+            bucket = ""
+        elif code == "CATEGORY-ADS-IR":
+            bucket = "ads-ir:"
+        elif code == "PRIVATE":
+            bucket = "private:"
+        else:
             continue
         for kind, value in cat.domains:
             if kind not in (geodat.ROOT_DOMAIN, geodat.FULL):
@@ -701,7 +859,11 @@ def parse_v2fly_dlc(raw: bytes) -> Parsed:
             if name is None:
                 bad += 1
             else:
-                out.append(f"full:{name}" if kind == geodat.FULL else name)
+                tok = (f"{bucket}full:{name}" if kind == geodat.FULL
+                       else f"{bucket}{name}")
+                if tok not in seen:
+                    seen.add(tok)
+                    out.append(tok)
     return Parsed(out, bad)
 
 
@@ -800,7 +962,9 @@ PARSERS = {
     "cidr": parse_cidr, "rir": parse_rir,
     "aws_json": parse_aws_json, "google_json": parse_google_json,
     "fastly_json": parse_fastly_json, "gcore_json": parse_gcore_json,
-    "ris": parse_ris, "ripe_org_asns": parse_ripe_org_asns,
+    "oracle_json": parse_oracle_json, "csv_cidr": parse_csv_cidr,
+    "ris": parse_ris, "rpki_json": parse_rpki_json,
+    "ripe_org_asns": parse_ripe_org_asns,
     "v2fly_dlc": parse_v2fly_dlc, "psl": parse_psl,
     "hosts": parse_hosts, "domains": parse_domains,
     "adblock": parse_adblock, "adguard_allow": parse_adguard_allow,

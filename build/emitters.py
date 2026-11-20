@@ -24,9 +24,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass, field
 
-from model import DomainSet, IPSet
+from model import DomainSet, IPSet, invert_networks
 
 PROJECT = "https://github.com/Arman2122/IR-Geo-DB"
 
@@ -224,6 +225,28 @@ def ip_wireguard(ctx: BuildContext, s: IPSet) -> None:
                 f"{s.title} — WireGuard AllowedIPs", s.total, s.sources)
 
 
+def ip_wireguard_exclude(ctx: BuildContext, s: IPSet, private_nets: list) -> None:
+    """Inverse IPv4 AllowedIPs: 0.0.0.0/0 minus this set and private space.
+
+    For WireGuard / AmneziaWG clients inside Iran that want everything
+    *except* Iranian and LAN traffic routed through the tunnel.
+    """
+    excluded = invert_networks(s.v4 + private_nets, version=4)
+    nets = ", ".join(str(n) for n in excluded)
+    write_lines(ctx, f"wireguard/{s.slug}-exclude-allowedips.conf",
+                [f"AllowedIPs = {nets}"],
+                f"{s.title} — WireGuard inverse AllowedIPs (all IPv4 except {s.slug} & private)",
+                len(excluded), s.sources)
+
+
+def ip_amnezia(ctx: BuildContext, s: IPSet) -> None:
+    """AmneziaVPN split-tunnel JSON array (IPv4 CIDRs)."""
+    if not s.v4:
+        return
+    entries = [{"hostname": str(n), "ip": ""} for n in s.v4]
+    write_json(ctx, f"amnezia/{s.slug}-ipv4.json", entries, len(entries))
+
+
 def ip_json(ctx: BuildContext, s: IPSet) -> None:
     write_json(ctx, f"json/{s.slug}-ip.json", {
         "set": s.slug, "title": s.title, "sources": s.sources,
@@ -320,29 +343,49 @@ def dom_hosts(ctx: BuildContext, d: DomainSet) -> None:
 
 
 def dom_adguard(ctx: BuildContext, d: DomainSet) -> None:
-    rules = [f"||{n}^" for n in d.plain_domains()]
+    rules = [f"||{n}^" for n in sorted(d.suffix)]
+    rules += [f"|{n}^" for n in sorted(d.full)]
     rules += [f"/{r}/" for r in sorted(d.regex)]
     write_lines(ctx, f"adguard/{d.slug}.txt", rules,
                 f"{d.title} — AdGuard DNS filter", len(rules), d.sources)
 
 
+def _rpz_serial(version: str) -> str:
+    """Strictly numeric RFC 1912 SOA serial (1..4294967295) from a release tag."""
+    digits = re.sub(r"\D", "", version)[:10]
+    if not digits:
+        return "1"
+    val = int(digits)
+    if val <= 0:
+        return "1"
+    if val > 4_294_967_295:
+        digits = digits[:8]
+        val = int(digits) or 1
+    return str(val)
+
+
 def dom_rpz(ctx: BuildContext, d: DomainSet) -> None:
-    serial = ctx.version.replace(".", "").replace("v", "")[:10] or "1"
+    serial = _rpz_serial(ctx.version)
     lines = ["$TTL 60",
              f"@ IN SOA localhost. root.localhost. ({serial} 3600 600 86400 60)",
              "  IN NS localhost.", ""]
-    for n in d.plain_domains():
+    for n in sorted(d.suffix):
         lines.append(f"{n} CNAME .")
         lines.append(f"*.{n} CNAME .")
+    for n in sorted(d.full):
+        lines.append(f"{n} CNAME .")
     write_lines(ctx, f"rpz/{d.slug}.zone", lines,
-                f"{d.title} — RPZ zone (NXDOMAIN)", len(d.plain_domains()),
+                f"{d.title} — RPZ zone (NXDOMAIN)", len(d.suffix) + len(d.full),
                 d.sources, comment=";")
 
 
 def dom_dnsmasq_block(ctx: BuildContext, d: DomainSet) -> None:
+    # Empty target returns NXDOMAIN for A, AAAA, and HTTPS/SVCB across all
+    # dnsmasq versions, preventing IPv6 AAAA leaks that /0.0.0.0 leaves open.
     write_lines(ctx, f"dnsmasq/{d.slug}-block.conf",
-                [f"address=/{n}/0.0.0.0" for n in d.plain_domains()],
-                f"{d.title} — dnsmasq sinkhole", len(d.plain_domains()), d.sources)
+                [f"address=/{n}/" for n in d.plain_domains()],
+                f"{d.title} — dnsmasq NXDOMAIN blocklist",
+                len(d.plain_domains()), d.sources)
 
 
 def dom_unbound_block(ctx: BuildContext, d: DomainSet) -> None:
@@ -365,20 +408,41 @@ def dom_mikrotik_dns(ctx: BuildContext, d: DomainSet) -> None:
     address-list= on a type=FWD entry writes every resolved address into that
     list dynamically, which is what catches Iranian services behind a foreign
     CDN — no static IP list can know those in advance.
+
+    Also writes a `-reset.rsc` variant tagged with comment=IR-Geo-DB so daily
+    re-imports replace only managed entries without touching user rules.
     """
     listname = d.slug.upper().replace("-", "_")
-    lines = ["/ip dns static"]
-    for n in sorted(d.suffix):
-        lines.append(f"add type=FWD name={n} match-subdomain=yes "
-                     f"forward-to={ctx.resolver} address-list={listname} ttl=1d")
-    for n in sorted(d.full):
-        lines.append(f"add type=FWD name={n} "
-                     f"forward-to={ctx.resolver} address-list={listname} ttl=1d")
+    tag = f"IR-Geo-DB-{listname}"
+    adds = [
+        f"add type=FWD name={n} match-subdomain=yes "
+        f"forward-to={ctx.resolver} address-list={listname} ttl=1d comment={tag}"
+        for n in sorted(d.suffix)
+    ] + [
+        f"add type=FWD name={n} "
+        f"forward-to={ctx.resolver} address-list={listname} ttl=1d comment={tag}"
+        for n in sorted(d.full)
+    ]
     note = (f"{len(d.regex)} regex rules omitted — RouterOS uses POSIX regex, "
             "not RE2") if d.regex else ""
-    write_lines(ctx, f"mikrotik/{d.slug}-dns.rsc", lines,
-                f"{d.title} — RouterOS DNS forwarders + {listname} address-list",
-                len(d.suffix) + len(d.full), d.sources, note=note)
+    count = len(d.suffix) + len(d.full)
+    write_lines(ctx, f"mikrotik/{d.slug}-dns.rsc", ["/ip dns static"] + adds,
+                f"{d.title} — RouterOS DNS forwarders + {listname} address-list (append)",
+                count, d.sources, note=note)
+    write_lines(ctx, f"mikrotik/{d.slug}-dns-reset.rsc",
+                ["/ip dns static", f"remove [find comment={tag}]"] + adds,
+                f"{d.title} — RouterOS DNS forwarders + {listname} address-list (replace)",
+                count, d.sources, note=note)
+
+
+def dom_amnezia(ctx: BuildContext, d: DomainSet) -> None:
+    """AmneziaVPN split-tunnel JSON array (domains)."""
+    plain = d.plain_domains()
+    entries = [{"hostname": n, "ip": ""} for n in plain]
+    note = (f"{d.unrepresentable()} keyword/regex rules omitted"
+            if d.unrepresentable() else "")
+    write_json(ctx, f"amnezia/{d.slug}-domains.json", entries, len(entries),
+               note=note)
 
 
 def dom_dnsmasq_route(ctx: BuildContext, d: DomainSet) -> None:
@@ -410,7 +474,7 @@ DOMAIN_EMITTERS_COMMON = [dom_text, dom_singbox_source, dom_clash]
 DOMAIN_EMITTERS_BLOCK = [dom_hosts, dom_adguard, dom_rpz, dom_dnsmasq_block,
                          dom_unbound_block, dom_smartdns_block]
 DOMAIN_EMITTERS_DIRECT = [dom_mikrotik_dns, dom_dnsmasq_route,
-                          dom_unbound_route, dom_smartdns_route]
+                          dom_unbound_route, dom_smartdns_route, dom_amnezia]
 
 # Every format for every set is ~700 MiB, most of it the same domains with
 # different punctuation. Past this size a set skips the verbose formats: RPZ
@@ -426,6 +490,8 @@ def emit_ipset(ctx: BuildContext, s: IPSet, role: str) -> None:
     for fn in IP_EMITTERS:
         fn(ctx, s)
     ip_surge(ctx, s, role)
+    if role == "direct":
+        ip_amnezia(ctx, s)
 
 
 def emit_domainset(ctx: BuildContext, d: DomainSet, role: str,

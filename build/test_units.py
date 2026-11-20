@@ -25,9 +25,9 @@ import emitters  # noqa: E402
 import geodat  # noqa: E402
 import sources  # noqa: E402
 from build import exclude_networks  # noqa: E402
-from model import (IPSet, clean_domain, from_singbox_rules,  # noqa: E402
-                   make_domainset, parse_networks, prune_covered,
-                   psl_filter, public_suffixes, range_to_cidrs,
+from model import (DomainSet, IPSet, clean_domain, from_singbox_rules,  # noqa: E402
+                   invert_networks, make_domainset, parse_networks,
+                   prune_covered, psl_filter, public_suffixes, range_to_cidrs,
                    subtract_allowlist)
 
 passed = failed = 0
@@ -140,6 +140,19 @@ eq(clean_domain(""), None, "empty is rejected")
 eq(clean_domain("a" * 300), None, "over-long names are rejected")
 eq(clean_domain("under_score.example.com"), "under_score.example.com",
    "underscores are kept — invalid per RFC, common in real lists")
+eq(clean_domain("ایران"), "xn--mgba3a4f16a",
+   "IDN Unicode TLD converts to ASCII punycode")
+eq(clean_domain("*.مثال.ایران"), "xn--mgbh0fb.xn--mgba3a4f16a",
+   "IDN wildcard converts cleanly to punycode suffix")
+eq(clean_domain("bad label.ایران"), None, "IDN with spaces is rejected")
+
+# invert_networks: WireGuard split-tunnel complement
+inv = invert_networks(nets("0.0.0.0/1"), version=4)
+eq([str(n) for n in inv], ["128.0.0.0/1"], "invert_networks returns exact IPv4 complement")
+inv2 = invert_networks(nets("10.0.0.0/8", "2001:db8::/32"), version=4)
+ok(not any(ipaddress.IPv4Address("10.1.2.3") in n for n in inv2)
+   and any(ipaddress.IPv4Address("8.8.8.8") in n for n in inv2),
+   "invert_networks ignores other address family and excludes target range")
 
 kept, dropped = prune_covered({"example.com", "ads.example.com",
                                "a.b.example.com", "other.net"})
@@ -229,6 +242,23 @@ eq(sources.parse_aws_json(b'{"prefixes":[{"ip_prefix":"1.2.3.0/24"}],'
 eq(sources.parse_gcore_json(b'{"addresses":["1.2.3.0/24"],'
                             b'"addresses_v6":["2001:db8::/32"]}').values,
    ["1.2.3.0/24", "2001:db8::/32"], "gcore json: both families")
+eq(sources.parse_oracle_json(
+    b'{"regions":[{"cidrs":[{"cidr":"1.2.3.0/24"},{"cidr":"2001:db8::/32"}]}]}').values,
+   ["1.2.3.0/24", "2001:db8::/32"], "oracle json: both families")
+eq(sources.parse_csv_cidr(b"5.101.96.0/21,NL,Amsterdam\n# comment\n2001:db8::/32,US\nbad,US\n").values,
+   ["5.101.96.0/21", "2001:db8::/32"], "csv_cidr: first column CIDRs")
+eq(sources.parse_csv_cidr(b"5.101.96.0/21,NL\nbad,US\n").invalid, 1,
+   "csv_cidr: malformed entries counted")
+rpki_sample = (b'{"roas":[{"asn":13335,"prefix":"1.0.0.0/24","maxLength":24},'
+               b'{"asn":"AS43754","prefix":"5.230.17.1/24","maxLength":24},'
+               b'{"asn":100,"prefix":"2001:db8::/32","maxLength":48},'
+               b'{"asn":100,"prefix":"1.2.3.0/24","maxLength":16},'
+               b'{"asn":"bad","prefix":"1.2.3.0/24","maxLength":24}]}')
+rpki_p = sources.parse_rpki_json(rpki_sample)
+eq(rpki_p.values, ["13335 1.0.0.0/24 24", "43754 5.230.17.0/24 24",
+                   "100 2001:db8::/32 48"],
+   "rpki_json: integer & AS-prefixed ASNs, canonicalised prefixes, v4 + v6")
+eq(rpki_p.invalid, 2, "rpki_json: bad maxLength and bad ASN counted")
 
 # Every domain parser runs clean_domain. A line that has the shape of an entry
 # but is rejected is counted, so a feed that turns to garbage shows up in
@@ -289,6 +319,18 @@ DLC = geodat.encode_geosite({"category-ir": [(geodat.ROOT_DOMAIN, "aparat.com"),
                              "google": [(geodat.ROOT_DOMAIN, "google.com")]})
 eq(sources.parse_v2fly_dlc(DLC).values, ["aparat.com", "full:x.digikala.com"],
    "dlc: CATEGORY-IR domain + full only")
+DLC_ALL = geodat.encode_geosite({
+    "category-ir": [(geodat.ROOT_DOMAIN, "aparat.com")],
+    "category-bank-ir": [(geodat.ROOT_DOMAIN, "aparat.com"),
+                         (geodat.ROOT_DOMAIN, "bank.example")],
+    "category-ads-ir": [(geodat.ROOT_DOMAIN, "adivery.ir")],
+    "private": [(geodat.ROOT_DOMAIN, "10.in-addr.arpa"),
+                (geodat.FULL, "router.local")],
+})
+eq(sources.parse_v2fly_dlc(DLC_ALL).values,
+   ["aparat.com", "bank.example", "ads-ir:adivery.ir",
+    "private:10.in-addr.arpa", "private:full:router.local"],
+   "dlc: merges CATEGORY-*-IR (deduped) and tags ads-ir and private buckets")
 eq(sources.parse_v2fly_dlc(geodat.encode_geosite(
     {"category-ir": [(geodat.ROOT_DOMAIN, "ads-*.x.ir"), (geodat.REGEX, r"^x$")]})).invalid,
    1, "dlc: a rejected name is counted, a regexp entry is not")
@@ -341,13 +383,22 @@ ok(not any(k in keys for k in ("ads-adguard", "malware-urlhaus", "phishing-db",
 
 eq(sources.PROVIDERS, {
     "ArvanCloud": {"orgs": ["ORG-NAAP1-RIPE", "ORG-NAAC1-RIPE", "ORG-AGTL2-RIPE"],
-                   "lists": ["arvancloud"]},
-    "Sotoon": {"orgs": ["ORG-HUCC1-RIPE", "ORG-IB117-RIPE"], "lists": []},
-    "Derak": {"orgs": ["ORG-ENDC1-RIPE"], "lists": ["derak-v4", "derak-v6"]},
-    "IranServer": {"orgs": ["ORG-GWSN7-RIPE"], "lists": ["iranserver"]},
-    "MizbanCloud": {"orgs": ["ORG-SAML1-RIPE"], "lists": ["mizbancloud"]},
-    "ParsPack": {"orgs": [], "lists": ["parspack"]},
-}, "providers: org handles and lists as verified in the RIPE database")
+                   "lists": ["arvancloud"], "domestic": False},
+    "Sotoon": {"orgs": ["ORG-HUCC1-RIPE", "ORG-IB117-RIPE"],
+               "lists": ["sotoon"], "domestic": False},
+    "Derak": {"orgs": ["ORG-ENDC1-RIPE"],
+              "lists": ["derak-v4", "derak-v6"], "domestic": False},
+    "IranServer": {"orgs": ["ORG-GWSN7-RIPE"],
+                   "lists": ["iranserver"], "domestic": False},
+    "MizbanCloud": {"orgs": ["ORG-SAML1-RIPE"],
+                    "lists": ["mizbancloud"], "domestic": False},
+    "ParsPack": {"orgs": [], "lists": ["parspack"], "domestic": False},
+    "Liara": {"orgs": ["ORG-TSAL5-RIPE"], "lists": [], "domestic": False},
+    "Hamravesh": {"orgs": ["ORG-PFHR1-RIPE"], "lists": [], "domestic": False},
+    "Server.ir": {"orgs": ["ORG-MR252-RIPE"], "lists": [], "domestic": True},
+    "Dorna": {"orgs": ["ORG-DNL22-RIPE"], "lists": [], "domestic": True},
+    "Regika": {"orgs": ["ORG-SC348-RIPE"], "lists": [], "domestic": True},
+}, "providers: org handles, lists and domestic flags as verified in the RIPE database")
 org_keys = [k for k in keys if k.startswith("ripe-org-")]
 eq(sorted(org_keys),
    sorted(f"ripe-org-{o.lower()}" for p in sources.PROVIDERS.values()
@@ -371,26 +422,31 @@ eq([(s.key, s.attribution) for s in sources.SOURCES if s.attribution],
 eq((sources.BY_KEY["ris-v4"].url, sources.BY_KEY["ris-v6"].url),
    ("https://www.ris.ripe.net/dumps/riswhoisdump.IPv4.gz",
     "https://www.ris.ripe.net/dumps/riswhoisdump.IPv6.gz"), "RIS dump URLs")
+ok(all(bool(sources.BY_KEY[f"rir-{r}"].mirrors)
+       for r in ("ripencc", "apnic", "arin", "lacnic", "afrinic")),
+   "every RIR delegated-stats source has cross-RIR mirrors")
+ok(bool(sources.BY_KEY["rpki-vrps"].mirrors), "rpki-vrps has Cloudflare mirror")
+ok(bool(sources.BY_KEY["ir-v2fly"].mirrors), "ir-v2fly has jsDelivr mirror")
 
 # stale window per kind of data
-STALE = (("rir-", 14), ("ris-", 14), ("xc-", 14), ("cloud-", 30),
+STALE = (("rir-", 14), ("ris-", 14), ("rpki-", 7), ("xc-", 14), ("cloud-", 30),
          ("ripe-org-", 90), ("threat-ip-", 7), ("malware-", 7),
          ("phishing-", 7), ("crypto-", 7), ("ads-", 30), ("nsfw-", 30),
          ("allow-", 30), ("ir-", 30), ("psl", 30),
-         ("arvancloud", 90), ("parspack", 90), ("derak-", 90),
+         ("arvancloud", 90), ("sotoon", 90), ("parspack", 90), ("derak-", 90),
          ("iranserver", 90), ("mizbancloud", 90))
 got = {s.key: s.max_stale_days for s in sources.SOURCES}
 want = {k: next(d for p, d in STALE if k.startswith(p)) for k in got}
 eq(got, want, "max_stale_days follows the kind of data")
 
 # a Last-Modified older than this is a stalled generator:
-# RIS dumps are made several times a day and are optional, so 3 days; RIR
+# RIS dumps and RPKI VRPs are made frequently and are optional, so 3 days; RIR
 # files are daily but stay valid for weeks and rir-ripencc is required, so
 # 30. Nothing else has one; threat feeds legitimately go quiet.
 got = {s.key: s.max_age_days for s in sources.SOURCES}
-want = {k: 3 if k.startswith("ris-") else 30 if k.startswith("rir-") else None
+want = {k: 3 if k.startswith(("ris-", "rpki-")) else 30 if k.startswith("rir-") else None
         for k in got}
-eq(got, want, "max_age_days: 3 for ris-*, 30 for rir-*, unset elsewhere")
+eq(got, want, "max_age_days: 3 for ris-*/rpki-*, 30 for rir-*, unset elsewhere")
 
 # the three HaGeZi lists carry the same three official mirrors
 for key, path in (("ads-hagezi", "wildcard/light-onlydomains.txt"),
@@ -460,7 +516,7 @@ for prefix, lic in (("rir-", "Registry public data"),
        f"{prefix}*: licence is '{lic}'")
 ok(all(s.license in ("Provider-published", "All rights reserved")
        for s in sources.SOURCES if s.key.startswith("cloud-")
-       or s.key in ("arvancloud", "parspack", "derak-v4", "derak-v6",
+       or s.key in ("arvancloud", "sotoon", "parspack", "derak-v4", "derak-v6",
                     "iranserver", "mizbancloud")),
    "cloud and Iranian provider lists: Provider-published or All rights reserved")
 eq({k: sources.BY_KEY[k].parser for k in ("ads-persian-hosts", "ads-persian-ads",
@@ -606,6 +662,97 @@ ok(not any("delete" in ln for ln in nft),
    "nftables: never deletes — user rules may reference these sets")
 ok(not any("_v6" in ln for ln in emit_nft(IPSet("y", "t", v4=v4s))),
    "nftables: an empty family gets no set, flush or add")
+
+
+# truncated protobuf must raise ValueError, never silently truncate
+for bad_blob in (b"\x0a\x10short", b"\x0d\x01\x02", b"\x09\x01\x02\x03"):
+    try:
+        list(geodat._iter_fields(bad_blob))
+        ok(False, f"geodat rejects truncated wire payload {bad_blob!r}")
+    except ValueError:
+        ok(True, f"geodat rejects truncated wire payload {bad_blob!r}")
+
+# IDN PSL matching
+eq(psl_filter({"xn--mgba3a4f16a"}, ["private:ایران"])[1], 1,
+   "psl_filter matches punycode hostname against Unicode IDN PSL rule")
+ok("xn--mgba3a4f16a" in public_suffixes(["ایران"]),
+   "public_suffixes includes punycode form of Unicode IDN rule")
+
+# ------------------------------------------------ emitters & curated data
+
+with tempfile.TemporaryDirectory() as tmp:
+    ctx = emitters.BuildContext(tmp, "t", "v2026.11.20-rc1")
+    ds_e = DomainSet(slug="x", title="X", suffix={"sub.example"}, full={"exact.example"})
+    emitters.dom_rpz(ctx, ds_e)
+    with open(os.path.join(tmp, "rpz", "x.zone"), encoding="utf-8") as fh:
+        rpz = fh.read()
+    ok("(202611201 " in rpz, "rpz: non-numeric version tag becomes numeric SOA serial")
+    ok("sub.example CNAME .\n*.sub.example CNAME ." in rpz,
+       "rpz: suffix emits apex and wildcard CNAME")
+    ok("exact.example CNAME ." in rpz and "*.exact.example CNAME ." not in rpz,
+       "rpz: exact-match entry emits apex only")
+
+    emitters.dom_dnsmasq_block(ctx, ds_e)
+    with open(os.path.join(tmp, "dnsmasq", "x-block.conf"), encoding="utf-8") as fh:
+        dm = fh.read()
+    ok("address=/sub.example/" in dm and "0.0.0.0" not in dm,
+       "dnsmasq block emits dual-stack NXDOMAIN without IPv4-only 0.0.0.0")
+
+    emitters.dom_adguard(ctx, ds_e)
+    with open(os.path.join(tmp, "adguard", "x.txt"), encoding="utf-8") as fh:
+        ag = fh.read()
+    ok("||sub.example^" in ag and "|exact.example^" in ag,
+       "adguard distinguishes suffix ||domain^ from exact |domain^")
+
+    emitters.dom_mikrotik_dns(ctx, ds_e)
+    with open(os.path.join(tmp, "mikrotik", "x-dns-reset.rsc"), encoding="utf-8") as fh:
+        mk_dns = fh.read()
+    ok("remove [find comment=IR-Geo-DB-X]" in mk_dns
+       and "comment=IR-Geo-DB-X" in mk_dns,
+       "mikrotik dns-reset tags and replaces only IR-Geo-DB entries")
+
+    emitters.ip_wireguard_exclude(ctx, IPSet("ir", "IR", v4=nets("2.144.0.0/14")),
+                                  nets("10.0.0.0/8"))
+    with open(os.path.join(tmp, "wireguard", "ir-exclude-allowedips.conf"), encoding="utf-8") as fh:
+        wg = fh.read()
+    ok("AllowedIPs = " in wg and "2.144.0.0/14" not in wg,
+       "wireguard inverse AllowedIPs excludes ir and private ranges")
+
+    emitters.ip_amnezia(ctx, IPSet("ir", "IR", v4=nets("2.144.0.0/14")))
+    emitters.dom_amnezia(ctx, ds_e)
+    import json
+    with open(os.path.join(tmp, "amnezia", "ir-ipv4.json"), encoding="utf-8") as fh:
+        eq(json.load(fh), [{"hostname": "2.144.0.0/14", "ip": ""}],
+           "amnezia IP JSON emits [{hostname, ip}] array")
+    with open(os.path.join(tmp, "amnezia", "x-domains.json"), encoding="utf-8") as fh:
+        eq(json.load(fh), [{"hostname": "exact.example", "ip": ""},
+                           {"hostname": "sub.example", "ip": ""}],
+           "amnezia domain JSON emits sorted [{hostname, ip}] array")
+
+# Curated data/ files hygiene check (runs on every PR)
+data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+for fn in ("ir-domains-add.txt", "ir-domains-exclude.txt"):
+    fp = os.path.join(data_dir, fn)
+    ok(os.path.isfile(fp), f"curated file data/{fn} exists")
+    raw_names = []
+    with open(fp, encoding="utf-8-sig") as fh:
+        for ln in fh:
+            tok = ln.split("#", 1)[0].strip()
+            if tok:
+                raw_names.append(tok)
+    cleaned = [clean_domain(n) for n in raw_names]
+    ok(all(c is not None and c == n for c, n in zip(cleaned, raw_names)),
+       f"data/{fn}: every entry is already a clean lowercase ASCII domain")
+    eq(len(raw_names), len(set(raw_names)), f"data/{fn}: no duplicate entries")
+    if fn == "ir-domains-add.txt":
+        ok(not any(n == "ir" or n.endswith(".ir") or n == "xn--mgba3a4f16a"
+                   or n.endswith(".xn--mgba3a4f16a") for n in raw_names),
+           "data/ir-domains-add.txt: no redundant .ir/.ایران entries")
+with open(os.path.join(data_dir, "ir-domains-add.txt"), encoding="utf-8") as fh:
+    add_set = {l.split("#", 1)[0].strip() for l in fh if l.split("#", 1)[0].strip()}
+with open(os.path.join(data_dir, "ir-domains-exclude.txt"), encoding="utf-8") as fh:
+    exc_set = {l.split("#", 1)[0].strip() for l in fh if l.split("#", 1)[0].strip()}
+eq(add_set & exc_set, set(), "data/: ir-domains-add and ir-domains-exclude are disjoint")
 
 
 print(f"{passed}/{passed + failed} unit checks passed")

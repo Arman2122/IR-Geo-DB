@@ -164,11 +164,17 @@ eq(audit["bgp"], {"applied": True, "ir_asns": 2, "ris_generated": "",
                   "added_addresses": 512, "removed_prefixes": 1,
                   "removed_addresses": 256, "excluded_prefixes": 0,
                   "excluded_addresses": 0, "registry_addresses_v6": 2 ** 96,
-                  "added_addresses_v6": 0, "removed_addresses_v6": 0},
-   "audit.bgp shape: IPv4 counts, excluded additions and IPv6 addresses")
+                  "added_addresses_v6": 0, "removed_addresses_v6": 0,
+                  "rpki_applied": False, "rpki_vrps": 0,
+                  "rpki_rescued_prefixes": 0, "rpki_rescued_addresses": 0,
+                  "rpki_rejected_ir_prefixes": 0, "rpki_rejected_ir_addresses": 0,
+                  "rpki_blocked_foreign_prefixes": 0,
+                  "rpki_blocked_foreign_addresses": 0},
+   "audit.bgp shape: IPv4 counts, excluded additions, RPKI and IPv6 addresses")
 eq(audit["ir_ipv4_addresses"], 65536, "ir_ipv4_addresses is after adjustment")
 eq(ir.sources, ["RIR delegated statistics (RIPE NCC, APNIC, ARIN, LACNIC, "
-                "AFRINIC)", "RIPE NCC RIS routing data"], "ir credits")
+                "AFRINIC)", "RIPE NCC RIS routing data",
+                "RPKI VRPs (rpki-client)"], "ir credits")
 
 # providers
 eq(set(audit["providers"]), set(sources.PROVIDERS), "one audit entry per provider")
@@ -181,7 +187,7 @@ eq(audit["providers"]["Derak"],
     "addresses": 1024},
    "every provider count is after bogon removal, announced and listed alike")
 eq(audit["providers"]["Sotoon"]["addresses"], 1024,
-   "a provider with no list gets its announced networks")
+   "a provider with no list harvested gets its announced networks")
 eq(audit["providers"]["ParsPack"]["asns"], [], "a provider with no org has no ASNs")
 cdn = ips["ir-cdn"]
 ok(overlaps(cdn.v4, "5.34.192.0/22"), "Sotoon's announced prefix in ir-cdn")
@@ -190,9 +196,9 @@ ok(overlaps(cdn.v6, "2a0e:97c0::/32"), "IPv6 provider announcement in ir-cdn")
 ok(overlaps(cdn.v6, "2a0e:1d80::/32"), "IPv6 provider list in ir-cdn")
 ok(not overlaps(cdn.v4, "20.0.0.0/24"), "an Iranian ASN is not a provider ASN")
 eq(len(cdn.v4), len(set(cdn.v4)), "ir-cdn collapsed")
-eq(cdn.sources, ["ArvanCloud", "Sotoon", "Derak", "IranServer", "MizbanCloud",
-                 "ParsPack", "RIPE NCC RIS routing data"], "ir-cdn credits")
-eq(ips["ir-full"].sources, ir.sources + cdn.sources[:-1],
+eq(cdn.sources, list(sources.PROVIDERS) + ["RIPE NCC RIS routing data"],
+   "ir-cdn credits")
+eq(ips["ir-full"].sources, ir.sources + list(sources.PROVIDERS),
    "ir-full credits each source once")
 
 # threat IPs
@@ -229,7 +235,12 @@ NOT_APPLIED = {"applied": False, "ir_asns": 0, "ris_generated": "",
                "added_addresses": 0, "removed_prefixes": 0,
                "removed_addresses": 0, "excluded_prefixes": 0,
                "excluded_addresses": 0, "registry_addresses_v6": 0,
-               "added_addresses_v6": 0, "removed_addresses_v6": 0}
+               "added_addresses_v6": 0, "removed_addresses_v6": 0,
+               "rpki_applied": False, "rpki_vrps": 0,
+               "rpki_rescued_prefixes": 0, "rpki_rescued_addresses": 0,
+               "rpki_rejected_ir_prefixes": 0, "rpki_rejected_ir_addresses": 0,
+               "rpki_blocked_foreign_prefixes": 0,
+               "rpki_blocked_foreign_addresses": 0}
 ips2, a2 = build.build_ip_sets(harvest(ris_v4=None, ris_v6=None), True)
 eq(a2["bgp"], NOT_APPLIED, "no RIS data: BGP not applied, counts 0")
 eq(strs(ips2["ir"].v4), ["10.0.0.0/16"], "no RIS data: ir is registry-only")
@@ -276,7 +287,7 @@ ok(overlaps(ips5["ir-cdn"].v4, "193.29.17.0/24"),
 eq(a5["providers"]["Sotoon"]["asns"], [41227, 202319],
    "provider ASN abroad: the same ASNs feed ir-cdn")
 
-# Hijack-shaped additions are left out and counted
+# Hijack-shaped additions are left out and counted; RPKI-valid ROA rescues them
 ips6, a6 = build.build_ip_sets(harvest(ris_v4=VALUES["ris-v4"] + [
     "58224 30.0.1.0/24", "64501 30.0.0.0/16"]), True)
 ok(not overlaps(ips6["ir"].v4, "30.0.1.0/24"),
@@ -284,6 +295,33 @@ ok(not overlaps(ips6["ir"].v4, "30.0.1.0/24"),
 eq((a6["bgp"]["excluded_prefixes"], a6["bgp"]["excluded_addresses"],
     a6["bgp"]["added_addresses"]), (1, 256, 512),
    "audit.bgp counts the excluded prefix and its addresses")
+
+ips_rpki, a_rpki = build.build_ip_sets(harvest(
+    ris_v4=VALUES["ris-v4"] + ["58224 30.0.1.0/24", "64501 30.0.0.0/16"],
+    rpki_vrps=["58224 30.0.1.0/24 24", "58224 10.0.2.0/24 24"]), True)
+ok(overlaps(ips_rpki["ir"].v4, "30.0.1.0/24"),
+   "RPKI-valid Iranian /24 under a foreign /16 is rescued into ir")
+ok(overlaps(ips_rpki["ir"].v4, "10.0.2.0/24"),
+   "RPKI-invalid foreign /24 inside registry is blocked from removing ir")
+eq((a_rpki["bgp"]["rpki_applied"], a_rpki["bgp"]["rpki_vrps"],
+    a_rpki["bgp"]["rpki_rescued_prefixes"],
+    a_rpki["bgp"]["rpki_blocked_foreign_prefixes"]),
+   (True, 2, 1, 1), "audit.bgp records RPKI rescued and blocked counts")
+
+# Corrupt RPKI data warns and falls back without stopping the build
+ips_bad_rpki, a_bad_rpki = build.build_ip_sets(
+    harvest(rpki_vrps=["corrupt"]), True)
+eq(a_bad_rpki["bgp"]["rpki_applied"], False,
+   "unreadable RPKI falls back cleanly to heuristic-only BGP")
+
+# Domestic offshore-registered provider (Server.ir, domestic=True) joins `ir`
+ips_dom, a_dom = build.build_ip_sets(harvest(
+    ris_v4=VALUES["ris-v4"] + ["39368 185.211.56.0/22"],
+    ripe_org_org_mr252_ripe=["AS39368"]), True)
+ok(overlaps(ips_dom["ir"].v4, "185.211.56.0/22"),
+   "domestic offshore-LIR provider ASN adds its prefixes to ir")
+ok(overlaps(ips_dom["ir-cdn"].v4, "185.211.56.0/22"),
+   "...and to ir-cdn")
 
 # Mixed-family subtraction: one provider's v4 and v6 entries that
 # each strictly contain a bogon crashed exclude_networks' collapse
@@ -302,12 +340,14 @@ eq(a7["providers"]["Derak"]["list_addresses"], 2 ** 24,
 
 # ------------------------------------------------------------- domain sets
 
-doms, daudit = build.build_domain_sets(h)
+doms, daudit = build.build_domain_sets(h, data_dir=None)
 ok("dyndns.org" not in doms["ir"].suffix and "xn--mgba3a4f16a" in doms["ir"].suffix,
    "ir domain filters")
 ok("aparat.com" in doms["ir"].suffix, "v2fly CATEGORY-IR merged")
 ok("allowed.example" not in doms["ads"].suffix, "AdGuard allowlist applied")
 ok("casino.example" in doms["nsfw"].suffix, "gambling merged into nsfw")
+ok("localhost" in doms["private"].suffix and "home.arpa" in doms["private"].suffix,
+   "private domain set ships standard RFC local suffixes")
 
 d = doms["ir"]
 eq(sorted(d.suffix), ["aparat.com", "digikala.com", "foo.dyndns.org", "ir",
@@ -321,10 +361,33 @@ eq(sorted(d.full), ["dyndns.org", "exact.example.com"],
    "full: v2fly values land in full; the PSL filter leaves exact names alone")
 ok("vistablog.ir" not in d.suffix,
    "a PSL suffix under .ir is covered by the ir rule, not filtered")
-eq(daudit, {"psl_removed": 2, "allowlist_removed": {"ads": 3, "ads-ir": 1}},
+eq(daudit, {"psl_removed": 2, "curated_ir_added": 0, "curated_ir_excluded": 0,
+            "allowlist_removed": {"ads": 3, "ads-ir": 1}},
    "domain audit counts")
 eq(d.sources, ["Iran Hosted Domains (MIT)",
                "v2fly domain-list-community (MIT)"], "ir domain credits")
+
+# Curated overrides + v2fly ads-ir/private buckets
+with tempfile.TemporaryDirectory() as dtmp:
+    with open(os.path.join(dtmp, "ir-domains-add.txt"), "w", encoding="utf-8") as fh:
+        fh.write("# comment\nkhanoumi.com # shop\ndigikala.com\nfoo.ir\n")
+    with open(os.path.join(dtmp, "ir-domains-exclude.txt"), "w", encoding="utf-8") as fh:
+        fh.write("asia.pool.ntp.org # global\n")
+    h_cur = harvest(
+        ir_domains=VALUES["ir-domains"] + ["asia.pool.ntp.org"],
+        ir_v2fly=VALUES["ir-v2fly"] + ["ads-ir:adivery.ir", "private:10.in-addr.arpa"],
+    )
+    doms_cur, daudit_cur = build.build_domain_sets(h_cur, data_dir=dtmp)
+ok("khanoumi.com" in doms_cur["ir"].suffix, "curated add reaches ir")
+ok("asia.pool.ntp.org" not in doms_cur["ir"].suffix, "curated exclude strips global domain")
+eq((daudit_cur["curated_ir_added"], daudit_cur["curated_ir_excluded"]), (1, 1),
+   "curated audit counts only net-new non-.ir additions and actual exclusions")
+ok("adivery.ir" in doms_cur["ads-ir"].suffix and "adivery.ir" in doms_cur["ads"].suffix,
+   "v2fly ads-ir bucket feeds ads-ir and ads")
+ok("adivery.ir" not in doms_cur["ir"].suffix and "10.in-addr.arpa" not in doms_cur["ir"].suffix,
+   "non-IR v2fly buckets never leak into ir")
+ok("10.in-addr.arpa" in doms_cur["private"].suffix,
+   "v2fly private bucket feeds private domain set")
 
 eq(sorted(doms["ads-ir"].suffix),
    ["ads.persian.example", "persian-ads.example", "tracker.persian.example"],
@@ -334,6 +397,7 @@ eq(sorted(doms["ads"].suffix),
     "tracker.persian.example", "x.github.io"],
    "ads: PersianBlocker + HaGeZi; a public-suffix allow entry is ignored")
 eq(doms["ads"].sources, ["PersianBlocker (AGPL-3.0)",
+                         "v2fly domain-list-community (MIT)",
                          "HaGeZi Multi LIGHT (GPL-3.0)"], "ads credits")
 eq(sorted(doms["nsfw"].suffix), ["casino.example", "porn.example"],
    "nsfw: porn + gambling")
@@ -345,7 +409,7 @@ eq((sorted(doms["malware"].suffix), sorted(doms["phishing"].suffix),
    (["bad.example"], ["phish.example"], ["miner.example"]),
    "security sets keep their keys")
 
-doms2, daudit2 = build.build_domain_sets(harvest(psl=None))
+doms2, daudit2 = build.build_domain_sets(harvest(psl=None), data_dir=None)
 eq(daudit2["psl_removed"], None, "no PSL: psl_removed is None")
 ok("dyndns.org" in doms2["ir"].suffix, "no PSL: the filter is skipped")
 
@@ -385,36 +449,47 @@ eq(on_disk["sources"], src, "stats.json on disk carries the sources block")
 # ------------------------------------------------ verify's provider checks
 
 
-def checks_for(applied, ris_v4_status, arvan=100, sotoon=0) -> dict:
+def checks_for(applied, ris_v4_status, arvan=100, sotoon=50,
+               liara=0, serverir=0, dorna=0) -> dict:
     """{provider: passed} from verify.provider_checks for a stats dict."""
     st = {"audit": {"bgp": {"applied": applied},
                     "providers": {"ArvanCloud": {"addresses": arvan},
-                                  "Sotoon": {"addresses": sotoon}}},
+                                  "Sotoon": {"addresses": sotoon},
+                                  "Liara": {"addresses": liara},
+                                  "Server.ir": {"addresses": serverir},
+                                  "Dorna": {"addresses": dorna}}},
           "sources": ({} if ris_v4_status is None
                       else {"ris-v4": {"status": ris_v4_status}})}
     return {label.split()[1]: passed
             for label, passed in verify.provider_checks(st)}
 
 
-eq(checks_for(False, "dropped"), {"ArvanCloud": True, "Sotoon": None},
-   "verify: RIS dropped, so the Sotoon check is skipped, ArvanCloud kept")
-eq(checks_for(True, "dropped"), {"ArvanCloud": True, "Sotoon": None},
-   "verify: ris-v4 dropped with only ris-v6 applied: Sotoon skipped")
-eq(checks_for(False, "stale"), {"ArvanCloud": True, "Sotoon": None},
-   "verify: unreadable RIS (BGP not applied): Sotoon skipped")
-eq(checks_for(True, None), {"ArvanCloud": True, "Sotoon": None},
-   "verify: no ris-v4 record at all: Sotoon skipped")
-eq(checks_for(True, "fresh"), {"ArvanCloud": True, "Sotoon": False},
-   "verify: with routing data, a Sotoon of 0 fails")
-eq(checks_for(True, "stale", sotoon=5), {"ArvanCloud": True, "Sotoon": True},
-   "verify: a stale RIS copy is still routing data, so Sotoon is checked")
-eq(checks_for(False, "dropped", arvan=0), {"ArvanCloud": False, "Sotoon": None},
-   "verify: ArvanCloud is checked without RIS, since it publishes a list")
+eq(checks_for(False, "dropped"),
+   {"ArvanCloud": True, "Sotoon": True, "Liara": None, "Server.ir": None, "Dorna": None},
+   "verify: RIS dropped, so routing-only providers are skipped while list-backed stay checked")
+eq(checks_for(True, "dropped"),
+   {"ArvanCloud": True, "Sotoon": True, "Liara": None, "Server.ir": None, "Dorna": None},
+   "verify: ris-v4 dropped with only ris-v6 applied: routing-only providers skipped")
+eq(checks_for(False, "stale"),
+   {"ArvanCloud": True, "Sotoon": True, "Liara": None, "Server.ir": None, "Dorna": None},
+   "verify: unreadable RIS (BGP not applied): routing-only providers skipped")
+eq(checks_for(True, None),
+   {"ArvanCloud": True, "Sotoon": True, "Liara": None, "Server.ir": None, "Dorna": None},
+   "verify: no ris-v4 record at all: routing-only providers skipped")
+eq(checks_for(True, "fresh"),
+   {"ArvanCloud": True, "Sotoon": True, "Liara": False, "Server.ir": False, "Dorna": False},
+   "verify: with routing data, routing-only providers of 0 fail")
+eq(checks_for(True, "stale", liara=5, serverir=5, dorna=5),
+   {"ArvanCloud": True, "Sotoon": True, "Liara": True, "Server.ir": True, "Dorna": True},
+   "verify: a stale RIS copy is still routing data, so routing-only providers are checked")
+eq(checks_for(False, "dropped", arvan=0, sotoon=0),
+   {"ArvanCloud": False, "Sotoon": False, "Liara": None, "Server.ir": None, "Dorna": None},
+   "verify: ArvanCloud and Sotoon are checked without RIS, since both publish lists")
 ok(all(passed is None or isinstance(passed, bool)
        for _, passed in verify.provider_checks({})),
    "verify: an empty stats dict gives checks, not a crash")
-eq([p for _, p in verify.provider_checks(stats)], [True, True],
-   "verify: the real stats above pass both provider checks")
+eq([p for _, p in verify.provider_checks(stats)][:2], [True, True],
+   "verify: the real stats above pass both list-backed provider checks")
 
 # ------------------------------------------------------ day-over-day guard
 
@@ -763,10 +838,20 @@ text = notes(audit={"bgp": {**BGP, "applied": False}})
 ok("routing data was unavailable" in text and "registry-only" in text,
    "no BGP: routing data unavailable, so registry-only")
 ok("registry-only" in notes(), "no audit.bgp at all: registry-only")
-ok("Cloudflare, AWS, Google, Fastly and G-Core ranges subtracted (7 addresses)"
+ok("Cloudflare, AWS, Google, Fastly, G-Core, Oracle Cloud and DigitalOcean "
+   "ranges subtracted (7 addresses)"
    in notes(audit={"foreign_cloud_excluded": True,
                    "foreign_cloud_overlap_addresses": 7}),
    "the cloud exclusion line is kept")
+rpki_text = notes(audit={"bgp": {**BGP, "rpki_applied": True,
+                                 "rpki_vrps": 1_000_000,
+                                 "rpki_rescued_prefixes": 3,
+                                 "rpki_rescued_addresses": 768,
+                                 "rpki_blocked_foreign_prefixes": 1,
+                                 "rpki_blocked_foreign_addresses": 256,
+                                 "rpki_rejected_ir_prefixes": 0}})
+ok("Validated with RPKI ROV (1,000,000 VRPs): rescued 768 RPKI-valid addresses"
+   in rpki_text, "release notes include RPKI ROV telemetry when applied")
 text = notes(audit={"providers": {"ArvanCloud": {"addresses": 12_345},
                                   "Sotoon": {"addresses": 0}}})
 ok("ArvanCloud 12,345" in text and "Sotoon 0" in text,
@@ -881,5 +966,20 @@ with tempfile.TemporaryDirectory() as tmp:
     eq(size, os.path.getsize(os.path.join(tmp, "xray", "geosite.dat")),
        "build_dat_files returns the byte size of xray/geosite.dat")
     ok(size > 0, "...and it is not empty")
+    import geodat
+    with open(os.path.join(tmp, "xray", "geosite.dat"), "rb") as fh:
+        gs_codes = {cat.code for cat in geodat.decode_geosite(fh.read())}
+    for code in ("IR", "CATEGORY-IR", "TLD-IR", "PRIVATE",
+                 "CATEGORY-ADS-ALL", "CATEGORY-ADS-IR"):
+        ok(code in gs_codes, f"geosite.dat contains {code}")
+    with open(os.path.join(tmp, "xray", "geoip-lite.dat"), "rb") as fh:
+        gl_codes = {cat.code for cat in geodat.decode_geoip(fh.read())}
+    eq(gl_codes, {"IR", "IR-CDN", "IR-FULL", "PRIVATE"},
+       "geoip-lite.dat carries IR, IR-CDN, IR-FULL and PRIVATE")
+    build.write_metadata(c, ips, doms, hm, audit)
+    with open(os.path.join(tmp, "manifest.json"), encoding="utf-8") as fh:
+        man = json.load(fh)
+    ok(all("sha256" in r and "bytes" in r for r in man["files"]),
+       "manifest.json enriches every file with bytes and sha256")
 
 done()
