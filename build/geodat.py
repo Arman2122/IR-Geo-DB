@@ -96,12 +96,18 @@ def _iter_fields(buf: bytes) -> Iterator[tuple[int, int, bytes | int]]:
             yield field, wire, value
         elif wire == 2:
             length, pos = _read_varint(buf, pos)
+            if pos + length > len(buf):
+                raise ValueError("truncated length-delimited field")
             yield field, wire, buf[pos:pos + length]
             pos += length
         elif wire == 5:
+            if pos + 4 > len(buf):
+                raise ValueError("truncated 32-bit field")
             yield field, wire, buf[pos:pos + 4]
             pos += 4
         elif wire == 1:
+            if pos + 8 > len(buf):
+                raise ValueError("truncated 64-bit field")
             yield field, wire, buf[pos:pos + 8]
             pos += 8
         else:

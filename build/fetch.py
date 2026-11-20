@@ -72,19 +72,44 @@ class _Rejected(Exception):
 
 
 def _decode(body: bytes, headers: dict[str, str]) -> bytes:
-    if headers.get("content-encoding", "").lower() == "gzip":
+    enc = headers.get("content-encoding", "").split(",", 1)[0].strip().lower()
+    if enc in ("gzip", "x-gzip"):
         return gzip.decompress(body)
+    if enc == "deflate":
+        try:
+            return zlib.decompress(body)
+        except zlib.error:
+            return zlib.decompress(body, -zlib.MAX_WBITS)
     return body
 
 
-def http_get(url: str, headers: dict[str, str], timeout: int = TIMEOUT) -> Response:
+def _read_body(resp, deadline: float, chunk_size: int = 65536) -> bytes:
+    """Read an HTTP response body with a hard total-transfer deadline.
+
+    urllib's `timeout` is a per-recv socket idle limit, so a degraded server
+    that trickles a few bytes every few seconds would otherwise hold a worker
+    open indefinitely instead of failing over to a mirror.
+    """
+    chunks: list[bytes] = []
+    while True:
+        chunk = resp.read(chunk_size)
+        if not chunk:
+            return b"".join(chunks)
+        chunks.append(chunk)
+        if time.monotonic() > deadline:
+            raise TimeoutError("transfer deadline exceeded")
+
+
+def http_get(url: str, headers: dict[str, str], timeout: float = TIMEOUT) -> Response:
     """One GET. A 304 is a Response; every other failure is a FetchError."""
     req = urllib.request.Request(url, headers={
         "User-Agent": USER_AGENT, "Accept-Encoding": "gzip, identity", **headers})
+    deadline = time.monotonic() + timeout
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             hdrs = {k.lower(): v for k, v in resp.headers.items()}
-            return Response(resp.status, hdrs, _decode(resp.read(), hdrs))
+            return Response(resp.status, hdrs,
+                            _decode(_read_body(resp, deadline), hdrs))
     except urllib.error.HTTPError as exc:
         if exc.code == 304:
             hdrs = {k.lower(): v for k, v in (exc.headers or {}).items()}
@@ -136,7 +161,7 @@ def _check_age(src, last_modified: str, now: datetime) -> None:
 
 def _validate(src, parser, body: bytes, headers: dict[str, str],
               stored: list[str] | None, now: datetime) -> sources.Parsed:
-    head = body[:512].lower()
+    head = body.lstrip()[:1024].lower()
     if b"<!doctype html" in head or b"<html" in head:
         raise _Rejected("HTML page")
     if len(body) < src.min_bytes:
@@ -172,9 +197,16 @@ def _parse_iso(text: str) -> datetime:
 def _write_atomic(path: str, data: bytes) -> None:
     # a unique temp name, so two writers can never interleave in one file
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path) or ".", suffix=".tmp")
-    with os.fdopen(fd, "wb") as fh:
-        fh.write(data)
-    os.replace(tmp, path)
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 class StateStore:
@@ -306,7 +338,11 @@ def _validators(meta: dict, url: str) -> dict[str, str]:
 
 
 def _cache_path(cache_dir: str, url: str) -> str:
-    return os.path.join(cache_dir, re.sub(r"[^A-Za-z0-9._-]", "_", url)[-150:])
+    clean = re.sub(r"[^A-Za-z0-9._-]", "_", url)
+    if len(clean) > 150:
+        digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:12]
+        clean = f"{digest}_{clean[-137:]}"
+    return os.path.join(cache_dir, clean)
 
 
 def acquire(src, store: StateStore, *, opener=http_get, cache_dir: str | None = None,

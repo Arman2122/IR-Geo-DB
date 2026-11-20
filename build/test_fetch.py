@@ -24,6 +24,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import zlib
 from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -299,12 +300,17 @@ eq(("t" in h.values, list(h.failed)), (False, ["t"]),
 
 eq(fetch._decode(gzip.compress(b"1.2.3.0/24\n"), {"content-encoding": "gzip"}),
    b"1.2.3.0/24\n", "10 _decode unpacks Content-Encoding: gzip")
+eq(fetch._decode(gzip.compress(b"1.2.3.0/24\n"), {"content-encoding": "x-gzip"}),
+   b"1.2.3.0/24\n", "10 _decode unpacks Content-Encoding: x-gzip")
+eq(fetch._decode(zlib.compress(b"1.2.3.0/24\n"), {"content-encoding": "deflate"}),
+   b"1.2.3.0/24\n", "10 _decode unpacks Content-Encoding: deflate")
 eq(fetch._decode(b"plain", {}), b"plain", "10 _decode leaves an identity body alone")
 
 
 class FakeHTTPResponse:
     def __init__(self, status: int, headers: dict, payload):
         self.status, self._payload = status, payload
+        self._pos = 0
         self.headers = email.message.Message()
         for k, v in headers.items():
             self.headers[k] = v
@@ -315,13 +321,29 @@ class FakeHTTPResponse:
     def __exit__(self, *_exc):
         return False
 
-    def read(self) -> bytes:
+    def read(self, amt: int = -1) -> bytes:
         if isinstance(self._payload, Exception):
             raise self._payload
+        if amt is None or amt < 0:
+            out = self._payload[self._pos:]
+            self._pos = len(self._payload)
+            return out
+        out = self._payload[self._pos:self._pos + amt]
+        self._pos += len(out)
+        return out
+
+
+class TrickleHTTPResponse(FakeHTTPResponse):
+    def __init__(self, status: int, headers: dict, chunk: bytes, delay: float):
+        super().__init__(status, headers, chunk)
+        self._delay = delay
+
+    def read(self, amt: int = -1) -> bytes:
+        time.sleep(self._delay)
         return self._payload
 
 
-def http_get_with(answer, headers: dict | None = None):
+def http_get_with(answer, headers: dict | None = None, timeout: float = fetch.TIMEOUT):
     """Run fetch.http_get with urlopen answering `answer`; return the result
     (or the FetchError raised) and the request that was sent."""
     sent = {}
@@ -334,7 +356,7 @@ def http_get_with(answer, headers: dict | None = None):
 
     real, urllib.request.urlopen = urllib.request.urlopen, fake_urlopen
     try:
-        return fetch.http_get("https://x/y", headers or {}), sent["req"]
+        return fetch.http_get("https://x/y", headers or {}, timeout=timeout), sent["req"]
     except FetchError as exc:
         return exc, sent["req"]
     finally:
@@ -361,6 +383,10 @@ for err in (urllib.error.URLError("no route"), TimeoutError("timed out")):
        f"10 {type(err).__name__} raises FetchError(0)")
 r, _ = http_get_with(FakeHTTPResponse(200, {}, http.client.IncompleteRead(b"x", 10)))
 eq((type(r), getattr(r, "status", None)), (FetchError, 0), "10 IncompleteRead raises FetchError(0)")
+r, _ = http_get_with(TrickleHTTPResponse(200, {}, b"x" * 1024, delay=0.05), timeout=0.08)
+eq((type(r), getattr(r, "status", None)), (FetchError, 0),
+   "10 slow-trickling body hits transfer deadline and raises FetchError(0)")
+ok("deadline" in str(r), "10 transfer deadline error names deadline")
 
 # ------------------------------------------------ 11 harvest, in parallel
 
@@ -443,14 +469,17 @@ st.save("empty", [], {"validated_at": STAMP})
 eq(st.load("empty"), ([], {"validated_at": STAMP}), "store: an empty list round-trips")
 eq(st.load("absent"), None, "store: an unknown key loads as None")
 st.save("x", ["b", "a"], {"validated_at": STAMP, "url_used": "u"})
-raw = open(os.path.join(st.root, "x.values.gz"), "rb").read()
+with open(os.path.join(st.root, "x.values.gz"), "rb") as fh:
+    raw = fh.read()
 eq(gzip.decompress(raw), b"b\na", "store: values are newline-joined UTF-8, gzipped")
 eq(sorted(os.listdir(st.root)), ["empty.json", "empty.values.gz", "x.json", "x.values.gz"],
    "store: two files per key, no temp files left behind")
 # bytes 4-7 of a gzip header are its MTIME; zero keeps unchanged values
 # byte-identical, so the state branch shows no diff for them
 eq(raw[4:8], b"\0\0\0\0", "store: the gzip header carries no timestamp")
-eq(open(os.path.join(st.root, "x.json"), encoding="utf-8").read(),
+with open(os.path.join(st.root, "x.json"), encoding="utf-8") as fh:
+    x_json = fh.read()
+eq(x_json,
    json.dumps({"url_used": "u", "validated_at": STAMP}, indent=2, sort_keys=True) + "\n",
    "store: metadata is pretty-printed with sorted keys")
 with open(os.path.join(st.root, "x.values.gz"), "wb") as fh:
@@ -484,7 +513,8 @@ st = StateStore(root)
 st.write_notice(sources.SOURCES)
 path = os.path.join(root, "NOTICE.md")
 ok(os.path.isfile(path), "notice: NOTICE.md is written, the store created")
-text = open(path, encoding="utf-8").read()
+with open(path, encoding="utf-8") as fh:
+    text = fh.read()
 ok(text.startswith("# IR-Geo-DB state store\n") and "`state` branch" in text,
    "notice: a header says what the branch is")
 ok("\nContains RIPE NCC RIS data © RIPE NCC\n" in text,
@@ -496,9 +526,12 @@ for s in sources.SOURCES:
        f"{s.attribution} |" in text, f"notice: a row for {s.key}")
 eq(sum(ln.startswith("| `") for ln in text.splitlines()), len(sources.SOURCES),
    "notice: one row per registered source")
-first = open(path, "rb").read()
+with open(path, "rb") as fh:
+    first = fh.read()
 st.write_notice(sources.SOURCES)
-eq(open(path, "rb").read(), first,
+with open(path, "rb") as fh:
+    second = fh.read()
+eq(second, first,
    "notice: no date in it, so an unchanged registry leaves it byte-identical")
 eq(st.load("NOTICE"), None, "notice: never mistaken for a stored source")
 ok("a\\|b" in fetch.notice([src(name="a|b")]),
@@ -515,6 +548,10 @@ o = fetch.acquire(src(mirrors=(MIRROR,), url="https://gone/x"), new_store(), ope
                   cache_dir=cache, now=NOW, sleep=noop)
 eq((o.status, o.served_by, op.calls.get(MIRROR)), ("fresh", "mirror-1", None),
    "cache: a cached body skips the network")
+u1 = "https://example.com/" + "a/" * 80 + "same_tail.txt"
+u2 = "https://example.com/" + "b/" * 80 + "same_tail.txt"
+ok(fetch._cache_path(cache, u1) != fetch._cache_path(cache, u2),
+   "cache: long URLs sharing a suffix do not collide")
 
 # ------------------------------------------------------------------ report
 

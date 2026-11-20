@@ -116,6 +116,18 @@ def exclude_networks(base: list, drop: list) -> tuple[list, int]:
     return kept, before - sum(n.num_addresses for n in kept)
 
 
+def invert_networks(exclude: list, version: int = 4) -> list:
+    """Return the complement of ``exclude`` within the full address space.
+
+    Used for split-tunnel configs (e.g. WireGuard AllowedIPs) that route
+    everything *except* domestic and private ranges through a tunnel.
+    """
+    universe = [ipaddress.ip_network("0.0.0.0/0" if version == 4 else "::/0")]
+    drop = [n for n in exclude if n.version == version]
+    kept, _ = exclude_networks(universe, drop)
+    return kept
+
+
 # --------------------------------------------------------------- domain sets
 
 
@@ -155,7 +167,7 @@ class DomainSet:
 
 
 def clean_domain(name: str) -> str | None:
-    """Normalise one hostname, or return None if it is not usable."""
+    """Normalise one hostname (including Unicode IDNs), or return None."""
     name = name.strip().lower().rstrip(".")
     if not name:
         return None
@@ -163,6 +175,15 @@ def clean_domain(name: str) -> str | None:
     if name.startswith("*."):
         name = name[2:]
     name = name.lstrip(".")
+    if not name:
+        return None
+    # Convert Unicode IDNs (e.g. Persian .ایران labels) to ASCII punycode;
+    # pure ASCII takes the fast path without IDNA overhead.
+    if not name.isascii():
+        try:
+            name = name.encode("idna").decode("ascii").lower()
+        except UnicodeError:
+            return None
     if not name or len(name) > 253:
         return None
     if not _DOMAIN_RE.match(name):
@@ -237,8 +258,7 @@ def make_domainset(slug: str, title: str, *, suffix=(), full=(), keyword=(),
         before = len(clean_full)
         clean_full = {
             n for n in clean_full
-            if not any(".".join(n.split(".")[i:]) in ds.suffix
-                       for i in range(1, len(n.split(".")) + 1))
+            if not any(p in ds.suffix for p in _parents(n))
         }
         ds.pruned += before - len(clean_full)
         ds.full = clean_full
@@ -259,10 +279,22 @@ def _parents(name: str):
         yield ".".join(parts[i:])
 
 
+def _rule_forms(rule: str) -> tuple[str, ...]:
+    """Return the rule itself plus its ASCII punycode form when non-ASCII."""
+    if rule.isascii():
+        return (rule,)
+    try:
+        ascii_form = rule.encode("idna").decode("ascii").lower()
+    except UnicodeError:
+        return (rule,)
+    return (rule, ascii_form) if ascii_form != rule else (rule,)
+
+
 def public_suffixes(rules: list[str]) -> set[str]:
     """Rule names from both PSL sections, with `private:`, `*.` and `!` stripped.
 
-    `rules` are sources.parse_psl values.
+    `rules` are sources.parse_psl values. Non-ASCII IDN rules are included in
+    both Unicode and punycode forms so punycode hostnames always match.
     """
     out = set()
     for rule in rules:
@@ -273,7 +305,7 @@ def public_suffixes(rules: list[str]) -> set[str]:
         if rule.startswith("*."):
             rule = rule[2:]
         if rule:
-            out.add(rule)
+            out.update(_rule_forms(rule))
     return out
 
 
@@ -294,11 +326,11 @@ def psl_filter(names: set[str], rules: list[str],
             continue
         rule = rule[len("private:"):]
         if rule.startswith("!"):
-            exempt.add(rule[1:])
+            exempt.update(_rule_forms(rule[1:]))
         elif rule.startswith("*."):
-            wild.add(rule[2:])
+            wild.update(_rule_forms(rule[2:]))
         else:
-            plain.add(rule)
+            plain.update(_rule_forms(rule))
 
     kept = set()
     for name in names:
