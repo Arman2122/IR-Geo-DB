@@ -398,4 +398,68 @@ adj = bgp.adjust(nets("10.0.0.0/16", "2001:db8::/48"), bgp.routes_from([
 ok(raises(lambda: bgp.check_limits(adj)),
    "a real IPv6 leak by an IR ASN trips the limit")
 
+# ----------------------------------------------------- RPKI ROV (RFC 6811)
+
+vrps = bgp.vrps_from([
+    "100 60.0.1.0/24 24",       # IR AS100 authorised for /24 under foreign /16
+    "200 60.0.0.0/16 24",       # foreign AS200 authorised for the covering /16
+    "999 70.0.0.0/22 24",       # foreign AS999 owns 70.0.0.0/22
+    "101 80.0.0.0/16 16",       # another IR AS101 owns 80.0.0.0/16
+    "100 90.0.0.0/20 20",       # IR AS100 maxLength=20 (will announce /24: invalid_length)
+    "100 10.0.5.0/24 24",       # IR AS100 owns 10.0.5.0/24 inside registry
+    "200 10.0.6.0/24 24",       # foreign AS200 validly leased 10.0.6.0/24
+    "100 2001:db9:1::/48 48",   # IPv6 RPKI-valid IR sub-assignment
+])
+eq(vrps.count, 8, "vrps_from counts both v4 and v6 VRPs")
+eq(raises(lambda: bgp.vrps_from(["100 1.2.3.0/24 16"]), ValueError) is not None,
+   True, "vrps_from rejects maxLength < prefixlen")
+eq(raises(lambda: bgp.vrps_from(["not-asn 1.2.3.0/24 24"]), ValueError) is not None,
+   True, "vrps_from rejects non-integer ASN")
+
+IR_RPKI = {100, 101}
+RPKI_ROUTES = bgp.routes_from([
+    "200 60.0.0.0/16",          # covering foreign /16
+    "100 60.0.1.0/24",          # RPKI-valid IR /24 -> RESCUED!
+    "100 60.0.2.0/24",          # RPKI-invalid_asn (covered by AS200 /16) -> REJECTED!
+    "100 70.0.1.0/24",          # RPKI-invalid_asn (covered by foreign AS999, no foreign route) -> REJECTED!
+    "100 80.0.1.0/24",          # RPKI-invalid_asn, but covering ROA is IR AS101 -> KEPT!
+    "100 90.0.1.0/24",          # RPKI-invalid_length (same AS100) -> KEPT!
+    "300 10.0.5.0/24",          # RPKI-invalid_asn foreign route inside registry -> BLOCKED from removing!
+    "200 10.0.6.0/24",          # RPKI-valid foreign route inside registry -> REMOVED!
+    "200 2001:db9::/32",        # IPv6 covering foreign route
+    "100 2001:db9:1::/48",      # IPv6 RPKI-valid IR /48 -> RESCUED!
+])
+
+adj = bgp.adjust(nets("10.0.0.0/16", "2001:db8::/32"), RPKI_ROUTES, IR_RPKI,
+                 vrps=vrps)
+ok(adj.rpki_applied and adj.rpki_vrps == 8, "RPKI ROV applied and VRP count recorded")
+eq(strs(adj.rpki_rescued), ["60.0.1.0/24", "2001:db9:1::/48"],
+   "RPKI rescues valid IR prefixes under foreign covering routes (v4 + v6)")
+eq(adj.rpki_rescued_addresses, 256, "rpki_rescued_addresses counts IPv4")
+ok(any(net("60.0.1.0/24").subnet_of(n) for n in adj.networks if n.version == 4),
+   "rescued v4 prefix reaches final networks")
+ok(any(net("2001:db9:1::/48").subnet_of(n) for n in adj.networks if n.version == 6),
+   "rescued v6 prefix reaches final networks")
+eq(strs(adj.rpki_rejected_ir), ["60.0.2.0/24", "70.0.1.0/24"],
+   "foreign-ROA-invalid IR announcements are rejected even without a covering foreign route")
+eq(adj.rpki_rejected_ir_addresses, 512, "rpki_rejected_ir_addresses counts IPv4")
+ok(any(net("80.0.1.0/24").subnet_of(n) for n in adj.networks if n.version == 4),
+   "intra-Iran ROA mismatch (covering ROA belongs to another IR ASN) is kept")
+ok(any(net("90.0.1.0/24").subnet_of(n) for n in adj.networks if n.version == 4),
+   "RPKI invalid_length by same IR ASN is kept")
+eq(strs(adj.rpki_blocked_foreign), ["10.0.5.0/24"],
+   "RPKI invalid_asn foreign route cannot remove IR registry space")
+eq(adj.rpki_blocked_foreign_addresses, 256, "rpki_blocked_foreign_addresses counts IPv4")
+eq(strs(adj.removed), ["10.0.6.0/24"],
+   "RPKI-valid foreign route inside registry still removes leased space")
+ok(any(net("10.0.5.0/24").subnet_of(n) for n in adj.networks if n.version == 4),
+   "protected registry /24 stays in final networks")
+
+# An unknown IR prefix under a foreign covering route still stays excluded when RPKI is on
+adj_unk = bgp.adjust(nets("10.0.0.0/16"), bgp.routes_from([
+    "200 61.0.0.0/16", "100 61.0.1.0/24"]), IR_RPKI, vrps=vrps)
+eq((adj_unk.added, strs(adj_unk.excluded), adj_unk.rpki_rescued),
+   ([], ["61.0.1.0/24"], []),
+   "RPKI-unknown IR prefix under a foreign covering route stays excluded")
+
 done()

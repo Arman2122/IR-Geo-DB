@@ -9,7 +9,11 @@ disagree, routing wins, decided by longest match:
   strictly inside them (Iranian prefixes inside those count again), minus the
   registry space they overlap. Only announced prefixes are added, never a
   covering block. An Iranian prefix under a less-specific foreign-only route
-  is not added at all: that is the shape of a hijack.
+  is left out as hijack-shaped unless a cryptographically valid RPKI ROA
+  authorises that Iranian origin. When RPKI VRPs are available, an Iranian
+  route that fails origin validation against foreign ROAs is never added, and
+  a foreign route that fails origin validation (`invalid_asn`) cannot remove
+  Iranian registry space.
 - Remove: prefixes inside registry space whose origins are all foreign, minus
   the Iranian-origin prefixes strictly inside them. A foreign route that
   covers registry space (a less-specific aggregate) never removes anything.
@@ -69,10 +73,89 @@ class Adjustment:
     # foreign-only route covers that prefix; the address count is IPv4
     excluded: list = field(default_factory=list)
     excluded_addresses: int = 0
+    # RPKI Route Origin Validation (RFC 6811) telemetry, when VRP data is present
+    rpki_applied: bool = False
+    rpki_vrps: int = 0
+    rpki_rescued: list = field(default_factory=list)
+    rpki_rescued_addresses: int = 0
+    rpki_rejected_ir: list = field(default_factory=list)
+    rpki_rejected_ir_addresses: int = 0
+    rpki_blocked_foreign: list = field(default_factory=list)
+    rpki_blocked_foreign_addresses: int = 0
 
 
 class BGPAnomaly(Exception):
     """The adjustment would change `ir` by more than routing noise explains."""
+
+
+class VRPIndex:
+    """In-memory RFC 6811 Validated ROA Payload index keyed by prefix length.
+
+    Only prefix lengths that actually appear in the VRP table are probed, so
+    validating a route is at most ~25 dictionary lookups with integer masking.
+    """
+
+    def __init__(self, buckets: dict[int, dict[int, dict[int, list[tuple[int, int]]]]],
+                 count: int):
+        self._buckets = buckets
+        self._lengths = {v: sorted(b, reverse=True) for v, b in buckets.items()}
+        self.count = count
+
+    def validate(self, version: int, start: int, prefixlen: int,
+                 origin: int) -> tuple[str, set[int]]:
+        """Return ``(status, covering_asns)`` per RFC 6811.
+
+        ``status`` is one of ``valid``, ``invalid_length`` (same ASN, prefix
+        longer than maxLength), ``invalid_asn`` (covered by ROAs for other
+        ASNs only), or ``unknown`` (no covering ROA).
+        """
+        bits = _BITS[version]
+        buckets = self._buckets[version]
+        covered = False
+        same_asn = False
+        covering_asns: set[int] = set()
+        for rlen in self._lengths[version]:
+            if rlen > prefixlen:
+                continue
+            mask = ~((1 << (bits - rlen)) - 1) if rlen < bits else (1 << bits) - 1
+            entries = buckets[rlen].get(start & mask)
+            if not entries:
+                continue
+            covered = True
+            for vasn, vmax in entries:
+                covering_asns.add(vasn)
+                if vasn == origin:
+                    same_asn = True
+                    if prefixlen <= vmax:
+                        return "valid", covering_asns
+        if not covered:
+            return "unknown", covering_asns
+        return ("invalid_length" if same_asn else "invalid_asn"), covering_asns
+
+
+def vrps_from(values: list[str]) -> VRPIndex:
+    """Build a VRPIndex from ``<asn> <prefix> <maxLength>`` parser strings."""
+    buckets: dict[int, dict[int, dict[int, list[tuple[int, int]]]]] = {4: {}, 6: {}}
+    count = 0
+    for value in values:
+        try:
+            asn_s, prefix, maxl_s = value.split()
+            asn = int(asn_s)
+            maxl = int(maxl_s)
+            addr, _, length = prefix.partition("/")
+            version = 6 if ":" in addr else 4
+            bits = _BITS[version]
+            plen = int(length)
+            if not 0 <= plen <= maxl <= bits or asn < 0:
+                raise ValueError
+            host = (1 << (bits - plen)) - 1
+            start = int.from_bytes(socket.inet_pton(_FAMILY[version], addr),
+                                   "big") & ~host
+        except (ValueError, OSError):
+            raise ValueError(f"not an RPKI VRP value: {value!r}") from None
+        buckets[version].setdefault(plen, {}).setdefault(start, []).append((asn, maxl))
+        count += 1
+    return VRPIndex(buckets, count)
 
 
 # ------------------------------------------------------------------ inputs
@@ -214,8 +297,9 @@ def _supernets(version: int, start: int, end: int):
 
 
 def adjust(registry: list, routes: list[Route], ir_asns: set[int],
-           neutral_asns: set[int] = frozenset()) -> Adjustment:
-    """Apply longest-match routing to the registry's Iranian space.
+           neutral_asns: set[int] = frozenset(),
+           vrps: VRPIndex | None = None) -> Adjustment:
+    """Apply longest-match routing (and optional RPKI ROV) to registry IR space.
 
     `registry` holds ip_network objects (or CIDR strings) of both families.
     "Inside registry space" is tested against the collapsed registry, so a
@@ -232,14 +316,37 @@ def adjust(registry: list, routes: list[Route], ir_asns: set[int],
     edge, which `ir-cdn` carries instead). With a foreign origin beside it, a
     prefix is foreign as before. An ASN in both sets is Iranian: most
     providers' ASNs are registered in Iran, and the registry's word stands.
+
+    When `vrps` (RFC 6811 Validated ROA Payloads) is supplied:
+    - An Iranian-origin prefix with a `valid` ROA is cryptographically
+      authorised, so a covering foreign supernet does not exclude it as a
+      hijack (e.g. a legitimate /24 sub-assigned from a foreign /15).
+    - An Iranian-origin route that is `invalid_asn` against covering ROAs
+      where *none* of the authorised ASNs is Iranian or neutral is rejected
+      (anti-hijack even without a covering foreign route; intra-Iran ROA
+      mismatches and `invalid_length` maxLength typos are kept).
+    - A foreign-origin route that is `invalid_asn` is ignored so a foreign
+      hijack or misconfiguration cannot remove Iranian registry space.
     """
     reg = _registry_runs(registry)
     neutral = set(neutral_asns) - set(ir_asns)
+    rpki_on = vrps is not None and vrps.count > 0
+    friendly_asns = set(ir_asns) | neutral
 
-    iranian: dict[int, set] = {4: set(), 6: set()}   # any IR origin
-    for version, start, end, _, origin in routes:
-        if origin in ir_asns:
-            iranian[version].add((start, end))
+    iranian: dict[int, set] = {4: set(), 6: set()}        # valid/unknown IR origin
+    ir_rpki_valid: dict[int, set] = {4: set(), 6: set()}  # RPKI-valid IR origin
+    rpki_rejected_ir_raw: dict[int, set] = {4: set(), 6: set()}
+    for version, start, end, plen, origin in routes:
+        if origin not in ir_asns:
+            continue
+        if rpki_on:
+            status, covering = vrps.validate(version, start, plen, origin)
+            if status == "valid":
+                ir_rpki_valid[version].add((start, end))
+            elif status == "invalid_asn" and covering.isdisjoint(friendly_asns):
+                rpki_rejected_ir_raw[version].add((start, end))
+                continue
+        iranian[version].add((start, end))
     ir_runs = {v: _merge(iranian[v]) for v in (4, 6)}
     # every prefix that would cover an Iranian one, so that finding the
     # foreign ones below is one set lookup per route
@@ -257,21 +364,35 @@ def adjust(registry: list, routes: list[Route], ir_asns: set[int],
     in_registry: dict[int, set] = {4: set(), 6: set()}
     in_iranian: dict[int, set] = {4: set(), 6: set()}
     over_iranian: dict[int, set] = {4: set(), 6: set()}
-    for version, start, end, _, origin in routes:
+    rpki_blocked_foreign_raw: dict[int, set] = {4: set(), 6: set()}
+    for version, start, end, plen, origin in routes:
         if origin in ir_asns or origin in neutral:
             continue
         reg_s, reg_e, ir_s, ir_e = bounds[version]
         i = bisect_right(reg_s, start) - 1
-        if i >= 0 and end <= reg_e[i]:
-            in_registry[version].add((start, end))
+        inside_reg = i >= 0 and end <= reg_e[i]
         i = bisect_right(ir_s, start) - 1
-        if i >= 0 and end <= ir_e[i]:
+        inside_ir = i >= 0 and end <= ir_e[i]
+        above_ir = (start, end) in supernets[version]
+        if not (inside_reg or inside_ir or above_ir):
+            continue
+        if rpki_on:
+            status, _ = vrps.validate(version, start, plen, origin)
+            if status == "invalid_asn":
+                if inside_reg:
+                    rpki_blocked_foreign_raw[version].add((start, end))
+                continue
+        if inside_reg:
+            in_registry[version].add((start, end))
+        if inside_ir:
             in_iranian[version].add((start, end))
-        if (start, end) in supernets[version]:
+        if above_ir:
             over_iranian[version].add((start, end))
 
     networks, added, removed, excluded = [], [], [], []
+    rpki_rescued, rpki_rejected_ir, rpki_blocked_foreign = [], [], []
     counts = {}
+    rpki_counts = {}
     for v in (4, 6):
         # MOAS: a prefix with any Iranian origin is Iranian, never foreign.
         removed_runs = _longest(in_registry[v] - iranian[v], iranian[v])
@@ -282,24 +403,46 @@ def adjust(registry: list, routes: list[Route], ir_asns: set[int],
         # An Iranian prefix under a foreign-only less-specific route is a
         # more-specific of someone else's block: the shape of a hijack, which
         # Iranian networks have done before, and adding it would send that
-        # block's traffic "direct". It is left out. A covering prefix with
-        # any Iranian origin is Iranian, so it does not count.
+        # block's traffic "direct". It is left out *unless* RPKI ROV proves
+        # the Iranian origin holds a valid ROA for it.
         foreign_over = over_iranian[v] - iranian[v]
-        hijack = {p for p in iranian[v]
-                  if not foreign_over.isdisjoint(_supernets(v, *p))}
+        under_foreign = {p for p in iranian[v]
+                         if not foreign_over.isdisjoint(_supernets(v, *p))}
+        hijack = under_foreign - ir_rpki_valid[v]
         added_runs = _subtract(_longest(iranian[v] - hijack, rivals), reg[v])
-        # what the addition would have been without that rule, so the audit
-        # shows exactly the space it kept out
+        # what the addition would have been without the hijack rule, so the
+        # audit shows exactly the space it kept out
         excluded_runs = _subtract(
             _subtract(_longest(iranian[v], rivals), reg[v]), added_runs)
+        # what RPKI rescued: space added because an RPKI-valid ROA overrode
+        # the covering-foreign-route hijack heuristic
+        no_rescue_runs = _subtract(
+            _longest(iranian[v] - under_foreign, rivals), reg[v])
+        rescued_runs = _subtract(added_runs, no_rescue_runs)
+        # RPKI-rejected Iranian additions (excluding prefixes that still have
+        # another valid/unknown IR origin or are already in the registry)
+        rejected_ir_runs = _subtract(
+            _merge(rpki_rejected_ir_raw[v] - iranian[v]),
+            _merge(reg[v] + added_runs))
+        # RPKI-blocked foreign removals (only prefixes that were not also
+        # validly removed by another foreign origin or shielded by an IR route)
+        blocked_for_runs = _subtract(
+            _longest(rpki_blocked_foreign_raw[v] - in_registry[v] - iranian[v],
+                     iranian[v]),
+            removed_runs)
         result = _merge(_subtract(reg[v], removed_runs) + added_runs)
 
         networks += _networks(v, result)
         added += _networks(v, added_runs)
         removed += _networks(v, removed_runs)
         excluded += _networks(v, excluded_runs)
+        rpki_rescued += _networks(v, rescued_runs)
+        rpki_rejected_ir += _networks(v, rejected_ir_runs)
+        rpki_blocked_foreign += _networks(v, blocked_for_runs)
         counts[v] = (_size(added_runs), _size(removed_runs), _size(reg[v]),
                      _size(excluded_runs))
+        rpki_counts[v] = (_size(rescued_runs), _size(rejected_ir_runs),
+                          _size(blocked_for_runs))
 
     return Adjustment(networks=networks, added=added, removed=removed,
                       added_addresses=counts[4][0],
@@ -308,7 +451,15 @@ def adjust(registry: list, routes: list[Route], ir_asns: set[int],
                       added_addresses_v6=counts[6][0],
                       removed_addresses_v6=counts[6][1],
                       registry_addresses_v6=counts[6][2],
-                      excluded=excluded, excluded_addresses=counts[4][3])
+                      excluded=excluded, excluded_addresses=counts[4][3],
+                      rpki_applied=rpki_on,
+                      rpki_vrps=vrps.count if rpki_on else 0,
+                      rpki_rescued=rpki_rescued,
+                      rpki_rescued_addresses=rpki_counts[4][0],
+                      rpki_rejected_ir=rpki_rejected_ir,
+                      rpki_rejected_ir_addresses=rpki_counts[4][1],
+                      rpki_blocked_foreign=rpki_blocked_foreign,
+                      rpki_blocked_foreign_addresses=rpki_counts[4][2])
 
 
 def check_limits(adj: Adjustment, max_add: float = 0.20,
