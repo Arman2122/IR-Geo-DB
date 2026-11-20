@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - "build/**"
+      - "data/**"
       - ".github/workflows/test.yml"
 
 permissions:
@@ -26,8 +27,8 @@ jobs:
       # produce a file that loads but routes wrongly, so it round-trips itself
       # on every push.
       - name: geodat round-trip self-test
-        run: python3 build/geodat.py
+        run: python3 -W error::ResourceWarning build/geodat.py
 
       - name: Unit tests
         run: |
-          for t in build/test_*.py; do echo "== $t"; python3 "$t" || exit 1; done
+          for t in build/test_*.py; do echo "== $t"; python3 -W error::ResourceWarning "$t" || exit 1; done

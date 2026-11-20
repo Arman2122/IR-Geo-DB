@@ -4,9 +4,15 @@
 
 ## Checks
 
-- [ ] `( for t in build/test_*.py; do python3 "$t" || exit 1; done )` passes
-- [ ] `python3 build/geodat.py` passes
+- [ ] `( for t in build/test_*.py; do python3 -W error::ResourceWarning "$t" || exit 1; done )` passes
+- [ ] `python3 -W error::ResourceWarning build/geodat.py` passes
 - [ ] A full build followed by `python3 build/verify.py dist` passes
+
+## If this adds a curated domain (`data/ir-domains-add.txt` / `data/ir-domains-exclude.txt`)
+
+- [ ] Verified active DNS resolution and hosting / origin ASN
+- [ ] Not under `.ir` / `.ایران` (already covered by collapsed TLD rules) and not a PSL private shared-hosting suffix
+- [ ] Also reported upstream where applicable (`bootmortis/iran-hosted-domains` or `v2fly/domain-list-community`)
 
 ## If this adds a source
 
@@ -19,7 +25,7 @@
 
 ## If this adds an Iranian provider
 
-- [ ] Added by RIPE organisation handle in `PROVIDERS`, with an entry in `_RIPE_ORG_FLOOR`
+- [ ] Added by RIPE organisation handle in `PROVIDERS`, with an entry in `_RIPE_ORG_FLOOR` and `domestic` flag verified against BGP upstream transit
 
 ## If this adds an output format
 

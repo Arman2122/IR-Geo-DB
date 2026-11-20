@@ -13,10 +13,11 @@
 
 ---
 
-Xray, sing-box, Mihomo, MikroTik, dnsmasq, Unbound, AdGuard, Surge, nftables —
-one build, every format, updated every day. Iranian IP data is worked out here
-from the Regional Internet Registries and RIPE NCC routing data, not taken from
-a geolocation guess or someone else's list.
+Xray, sing-box, Mihomo, MikroTik, WireGuard, AmneziaVPN, dnsmasq, Unbound,
+AdGuard, Surge, nftables — one build, every format, updated every day. Iranian
+IP data is worked out here from the Regional Internet Registries, RIPE NCC
+routing data and RPKI cryptographic origin validation, not taken from a
+geolocation guess or someone else's list.
 
 ## Download
 
@@ -35,8 +36,8 @@ changes, so you set it once.
 
 **From inside Iran**, prefer jsDelivr: `raw.githubusercontent.com` is commonly
 blocked. jsDelivr refuses files over 20 MB; the largest file here is
-`geosite.dat` at about 13 MB, and the release notes warn if it ever reaches the
-limit.
+`geosite.dat` at about 15.7 MB, and the release notes warn if it ever reaches
+the limit.
 
 **On a router**, prefer the `dist` branch. Release URLs redirect through
 `objects.githubusercontent.com` and RouterOS `/tool fetch` does not reliably
@@ -62,15 +63,20 @@ Put both next to the core binary or in its asset directory.
       "domain": ["geosite:ads", "geosite:malware", "geosite:phishing", "geosite:cryptominers"] },
     { "type": "field", "outboundTag": "block",
       "ip": ["geoip:malware", "geoip:phishing"] },
-    { "type": "field", "outboundTag": "direct", "domain": ["geosite:ir"] },
+    { "type": "field", "outboundTag": "direct", "domain": ["geosite:ir", "geosite:private"] },
     { "type": "field", "outboundTag": "direct", "ip": ["geoip:ir", "geoip:private"] }
   ]
 }
 ```
 
-`geosite:category-ads-all` works too, as an alias for existing configs.
+Swap `geoip:ir` for `geoip:ir-full` if you also want Iranian CDN foreign edge
+nodes routed direct. Compatibility aliases `geosite:category-ir`,
+`geosite:category-ads-all`, `geosite:category-ads-ir` and `geosite:tld-ir` are
+present so existing v2rayN / Xray configs work unchanged.
 
-On phones, `geoip-lite.dat` and `geosite-lite.dat` carry only the Iranian sets.
+On phones, `geoip-lite.dat` (`ir`, `ir-cdn`, `ir-full`, `private`) and
+`geosite-lite.dat` (`ir`, `category-ir`, `tld-ir`, `ads-ir`, `private`) carry
+only the Iranian and local sets.
 </details>
 
 <details>
@@ -80,32 +86,40 @@ On phones, `geoip-lite.dat` and `geosite-lite.dat` carry only the Iranian sets.
 "route": {
   "rules": [
     { "rule_set": ["geosite-ads", "geosite-malware", "geosite-phishing"], "action": "reject" },
-    { "rule_set": ["geosite-ir", "geoip-ir"], "outbound": "direct" }
+    { "rule_set": ["geosite-ir", "geosite-private", "geoip-ir", "geoip-private"], "outbound": "direct" }
   ],
   "rule_set": [
     { "type": "remote", "tag": "geosite-ir", "format": "binary",
-      "url": "https://raw.githubusercontent.com/Arman2122/IR-Geo-DB/dist/sing-box/rule-set/geosite-ir.srs",
+      "url": "https://cdn.jsdelivr.net/gh/Arman2122/IR-Geo-DB@dist/sing-box/rule-set/geosite-ir.srs",
+      "download_detour": "direct", "update_interval": "1d" },
+    { "type": "remote", "tag": "geosite-private", "format": "binary",
+      "url": "https://cdn.jsdelivr.net/gh/Arman2122/IR-Geo-DB@dist/sing-box/rule-set/geosite-private.srs",
       "download_detour": "direct", "update_interval": "1d" },
     { "type": "remote", "tag": "geoip-ir", "format": "binary",
-      "url": "https://raw.githubusercontent.com/Arman2122/IR-Geo-DB/dist/sing-box/rule-set/geoip-ir.srs",
+      "url": "https://cdn.jsdelivr.net/gh/Arman2122/IR-Geo-DB@dist/sing-box/rule-set/geoip-ir.srs",
+      "download_detour": "direct", "update_interval": "1d" },
+    { "type": "remote", "tag": "geoip-private", "format": "binary",
+      "url": "https://cdn.jsdelivr.net/gh/Arman2122/IR-Geo-DB@dist/sing-box/rule-set/geoip-private.srs",
       "download_detour": "direct", "update_interval": "1d" },
     { "type": "remote", "tag": "geosite-ads", "format": "binary",
-      "url": "https://raw.githubusercontent.com/Arman2122/IR-Geo-DB/dist/sing-box/rule-set/geosite-ads.srs",
+      "url": "https://cdn.jsdelivr.net/gh/Arman2122/IR-Geo-DB@dist/sing-box/rule-set/geosite-ads.srs",
       "download_detour": "direct", "update_interval": "1d" },
     { "type": "remote", "tag": "geosite-malware", "format": "binary",
-      "url": "https://raw.githubusercontent.com/Arman2122/IR-Geo-DB/dist/sing-box/rule-set/geosite-malware.srs",
+      "url": "https://cdn.jsdelivr.net/gh/Arman2122/IR-Geo-DB@dist/sing-box/rule-set/geosite-malware.srs",
       "download_detour": "direct", "update_interval": "1d" },
     { "type": "remote", "tag": "geosite-phishing", "format": "binary",
-      "url": "https://raw.githubusercontent.com/Arman2122/IR-Geo-DB/dist/sing-box/rule-set/geosite-phishing.srs",
+      "url": "https://cdn.jsdelivr.net/gh/Arman2122/IR-Geo-DB@dist/sing-box/rule-set/geosite-phishing.srs",
       "download_detour": "direct", "update_interval": "1d" }
   ]
 }
 ```
 
-Rule-sets are compiled at format version 1, so they load on sing-box 1.8 and
-later; the `"action": "reject"` rule above needs sing-box 1.11 or later. The
-same block ships as `sing-box/config-snippet.json`, and the JSON sources are
-in `sing-box/source/`.
+The snippet uses jsDelivr so `"download_detour": "direct"` works from inside
+Iran without hitting `raw.githubusercontent.com`. Rule-sets are compiled at
+format version 1, so they load on sing-box 1.8 and later; the
+`"action": "reject"` rule above needs sing-box 1.11 or later. The same block
+ships as `sing-box/config-snippet.json`, and the JSON sources are in
+`sing-box/source/`.
 </details>
 
 <details>
@@ -118,14 +132,14 @@ rule-providers:
     behavior: domain
     format: mrs
     interval: 86400
-    url: https://raw.githubusercontent.com/Arman2122/IR-Geo-DB/dist/mihomo/ir-domain.mrs
+    url: https://cdn.jsdelivr.net/gh/Arman2122/IR-Geo-DB@dist/mihomo/ir-domain.mrs
     path: ./ruleset/ir-domain.mrs
   ir-ip:
     type: http
     behavior: ipcidr
     format: mrs
     interval: 86400
-    url: https://raw.githubusercontent.com/Arman2122/IR-Geo-DB/dist/mihomo/ir-ip.mrs
+    url: https://cdn.jsdelivr.net/gh/Arman2122/IR-Geo-DB@dist/mihomo/ir-ip.mrs
     path: ./ruleset/ir-ip.mrs
 
 rules:
@@ -164,16 +178,18 @@ truncated download:
 
 Split DNS. Each entry forwards the domain to an Iranian resolver *and* writes
 every resolved address into the `IR` address list — which is how Iranian
-services behind a foreign CDN get caught, something no static IP list can do:
+services behind a foreign CDN get caught, something no static IP list can do.
+Use `ir-dns-reset.rsc` to cleanly replace previous IR-Geo-DB static DNS entries
+(tagged with `comment=IR-Geo-DB-IR`) without touching your own static records:
 
 ```
 /tool fetch mode=https dst-path=ir-dns.rsc \
-  url="https://raw.githubusercontent.com/Arman2122/IR-Geo-DB/dist/mikrotik/ir-dns.rsc"
+  url="https://raw.githubusercontent.com/Arman2122/IR-Geo-DB/dist/mikrotik/ir-dns-reset.rsc"
 /import file-name=ir-dns.rsc
 ```
 
-> **This one is big — check your device first.** `ir-dns.rsc` is ~57,500
-> static DNS entries and roughly 6 MB. That is fine on an RB5009, CCR or any
+> **This one is big — check your device first.** `ir-dns.rsc` is ~57,600
+> static DNS entries and roughly 7.1 MB. That is fine on an RB5009, CCR or any
 > device with 512 MB+, but it will exhaust a hAP ax² / hEX / RB750 and can
 > take several minutes to import. On small hardware, skip it and use the IP
 > address-list alone, or use this single rule, which covers the entire `.ir`
@@ -184,7 +200,7 @@ services behind a foreign CDN get caught, something no static IP list can do:
 > add type=FWD regexp=".*\\.ir\$" forward-to=178.22.122.100 address-list=IR ttl=1d
 > ```
 >
-> The address-list files (`ir-ipv4.rsc`, ~1,900 entries) are small and safe
+> The address-list files (`ir-ipv4.rsc`, ~1,910 entries) are small and safe
 > everywhere.
 
 Ad and threat blocking, RouterOS 7.15+:
@@ -194,7 +210,7 @@ Ad and threat blocking, RouterOS 7.15+:
   url="https://raw.githubusercontent.com/Arman2122/IR-Geo-DB/dist/mikrotik/adlist-block-all.txt"
 ```
 
-`adlist-block-all.txt` is over 300,000 domains. On small devices start
+`adlist-block-all.txt` is over 320,000 domains. On small devices start
 with `adlist-malware.txt` and `adlist-phishing.txt`, then check
 `/system resource print` before adding ads.
 </details>
@@ -203,7 +219,7 @@ with `adlist-malware.txt` and `adlist-phishing.txt`, then check
 <summary><b>DNS servers</b></summary>
 
 ```bash
-# dnsmasq — sinkhole
+# dnsmasq — dual-stack NXDOMAIN sinkhole (blocks both A and AAAA)
 curl -sfL -o /etc/dnsmasq.d/block.conf \
   https://raw.githubusercontent.com/Arman2122/IR-Geo-DB/dist/dnsmasq/block-all-block.conf
 
@@ -225,7 +241,7 @@ standard response policy zone.
 </details>
 
 <details>
-<summary><b>Firewalls</b></summary>
+<summary><b>Firewalls & VPNs</b></summary>
 
 ```bash
 # nftables — sets ir_v4 / ir_v6 in table inet geo; re-running replaces their
@@ -245,8 +261,14 @@ that line, destroy and reload that set once.
 **pfSense / OPNsense** — Firewall → Aliases → *URL Table (IPs)* → point at
 `.../dist/text/ir-ipv4.txt`, refresh daily.
 
-**WireGuard** — `wireguard/ir-allowedips.conf` is a ready `AllowedIPs =` line
-for split tunnelling.
+**WireGuard / AmneziaWG** — `wireguard/ir-exclude-allowedips.conf` (and
+`ir-full-exclude-allowedips.conf`) carry ready-made `AllowedIPs =` lines equal
+to `0.0.0.0/0` minus Iran and private/LAN ranges, so non-Iranian traffic goes
+over the tunnel while Iranian and local traffic stays direct.
+`wireguard/ir-allowedips.conf` provides the positive set.
+
+**AmneziaVPN** — import `amnezia/ir-domains.json`, `amnezia/ir-ipv4.json` or
+`amnezia/ir-full-ipv4.json` directly under Split Tunnelling → Import.
 </details>
 
 <details>
@@ -265,11 +287,11 @@ RULE-SET,https://raw.githubusercontent.com/Arman2122/IR-Geo-DB/dist/surge/ir-ip.
 ## Sets
 
 **IP** — `ir` · `ir-cdn` · `ir-full` · `private` · `malware` · `phishing`
-**Domain** — `ir` · `ads` · `ads-ir` · `malware` · `phishing` · `cryptominers` · `nsfw` · `block-all`
+**Domain** — `ir` · `private` · `ads` · `ads-ir` · `malware` · `phishing` · `cryptominers` · `nsfw` · `block-all`
 
 `geoip:` and `geosite:` are separate namespaces, so `geoip:malware` (C2
-addresses) and `geosite:malware` (malware domains) are different sets that
-share a name on purpose.
+addresses) and `geosite:malware` (malware domains) — and `geoip:private` and
+`geosite:private` — are different sets that share a name on purpose.
 
 Live counts for the current build are in
 [`stats.json`](https://github.com/Arman2122/IR-Geo-DB/releases/latest/download/stats.json).
@@ -282,16 +304,17 @@ Live counts for the current build are in
 | `sing-box/` | compiled `.srs` + JSON sources |
 | `mihomo/` | compiled `.mrs` |
 | `clash/` | rule-provider YAML, `.list`, classical |
-| `mikrotik/` | `.rsc` address-lists, DNS scripts, adlists |
-| `dnsmasq/` | `server=/…/` routing, `address=/…/` sinkhole |
+| `mikrotik/` | `.rsc` address-lists, DNS + DNS-reset scripts, adlists |
+| `dnsmasq/` | `server=/…/` routing, dual-stack `address=/…/` NXDOMAIN sinkhole |
 | `unbound/` | forward-zones, `always_nxdomain` zones |
 | `smartdns/` | nameserver groups, `address /…/#` |
-| `adguard/` | `\|\|domain^` filter syntax |
+| `adguard/` | `\|\|domain^` and `\|domain^` filter syntax |
 | `hosts/` | `0.0.0.0 domain` |
 | `rpz/` | BIND response policy zones |
 | `ipset/` | `ipset restore` |
 | `nftables/` | `nft` interval sets |
-| `wireguard/` | `AllowedIPs =` |
+| `wireguard/` | positive and inverse (`exclude`) `AllowedIPs =` |
+| `amnezia/` | AmneziaVPN split-tunnelling JSON lists |
 | `surge/` | rule list + `DOMAIN-SET` |
 | `quantumultx/` | filters with policies |
 | `text/` | plain CIDR / domain per line |
@@ -304,45 +327,58 @@ set used, under `audit.format_profiles`.
 
 Not from geolocation, and not from anyone else's list: this project works it
 out. The registry says who was *given* a block; routing says who *announces* it
-today. The build starts from the first and corrects it with the second.
+today; RPKI says who is *cryptographically authorised* to announce it. The
+build starts from the registry, corrects it with routing, and validates
+contested routes with RPKI.
 
 **The registry.** An address starts in `ir` if a Regional Internet Registry
 delegated it to an organisation whose registered country is `IR`. All five RIRs
 are read, since an Iranian organisation can hold space from any of them.
 
-**Routing.** The build then reads RIPE NCC's RIS routing table, and the most
-specific route decides whose an address is:
+**Routing and RPKI ROV (RFC 6811).** The build then reads RIPE NCC's RIS
+routing table and OpenBSD `rpki-client`'s Validated ROA Payloads (mirrored by
+Cloudflare), and the most specific route decides whose an address is:
 
-- **Added:** prefixes originated by an Iran-registered ASN that the registry
-  doesn't cover, such as Respina's `5.160.0.0/16`, which the registry lists
-  under the UAE. A foreign more-specific route inside one of them is left out.
-  So is an Iranian prefix that sits under a less-specific route only foreign
-  networks announce: that is what a hijack of someone else's block looks
-  like, and adding it would send that block's traffic direct.
+- **Added:** prefixes originated by an Iran-registered ASN (or a verified
+  domestic-only offshore-LIR Iranian provider such as Server.ir, Dorna or
+  Regika, whose BGP transit is 100 % Iranian) that the registry doesn't cover,
+  such as Respina's `5.160.0.0/16`, which the registry lists under the UAE. A
+  foreign more-specific route inside one of them is left out. An Iranian prefix
+  under a foreign-only covering supernet is excluded as hijack-shaped **unless**
+  a cryptographically valid RPKI ROA authorises the Iranian origin — which
+  recovers legitimate Iranian sub-assignments such as ParsUptime's
+  `5.230.17.0/24` and `94.249.244.0/24` without trusting hijacks. An Iranian
+  route that fails RPKI ROV against a foreign ROA (`invalid_asn`) is never
+  added.
 - **Removed:** registry space whose most specific route is originated by a
-  foreign ASN, such as Iranian space leased to foreign hosts. A foreign
-  *covering* route (a less-specific aggregate) never removes anything.
-- **Not foreign:** the Iranian providers' own networks registered abroad, such
-  as Sotoon's AS41227 (Netherlands) and ArvanCloud's UAE-registered ASNs
-  (see the next section). A route only they announce neither removes the
-  provider's Iranian space nor is added.
+  foreign ASN, such as Iranian space leased to foreign hosts — **unless** that
+  foreign route is RPKI-`invalid_asn` (for example, an unauthorised foreign
+  origin on space whose ROA belongs to an Iranian ASN, such as `213.176.3.0/24`).
+  A foreign *covering* route (a less-specific aggregate) never removes anything.
+- **Not foreign:** Iranian CDN and cloud providers' networks registered abroad
+  that run foreign edge PoPs, such as Sotoon's AS41227 (Netherlands) and
+  ArvanCloud's UAE-registered ASNs (see the next section). A route only they
+  announce neither removes the provider's Iranian space nor is added to `ir`
+  (it ships in `ir-cdn` and `ir-full` instead).
 
-On 2026-10-23 that added 180,992 and removed 80,896 IPv4 addresses, leaving
-10,940,160 addresses in 1,901 prefixes; 1,280 addresses in 4 prefixes were left
-out as hijack-shaped. A leak or a broken routing dump must not reach you as
-data, so the build fails if routing would add more than 20 % or remove more
-than 10 % of the registry's addresses, IPv4 and IPv6 each (it was +1.7 % and
-−0.7 % for IPv4, +0.2 % and −3.1 % for IPv6). Without routing data, `ir` is
+On 2026-11-20 that added 187,392 and removed 82,688 IPv4 addresses on
+10,840,832 registry addresses, leaving 10,945,536 addresses in 1,910 prefixes
+(plus 641 IPv6 prefixes). RPKI ROV (1,037,837 VRPs) rescued 1,280 RPKI-valid
+addresses (4 prefixes) under foreign supernets and blocked 1 RPKI-invalid
+foreign removal (256 addresses). A leak or a broken routing dump must not reach
+you as data, so the build fails if routing would add more than 20 % or remove
+more than 10 % of the registry's addresses, IPv4 and IPv6 each (it was +1.7 %
+and −0.8 % for IPv4, +0.2 % and −3.2 % for IPv6). Without routing data, `ir` is
 registry-only.
 
 Three more consequences, all deliberate:
 
 **Iranian CDN and hosting ranges are separate.** See the next section.
 
-**Foreign cloud ranges are subtracted.** Cloudflare, AWS, Google, Fastly and
-G-Core publish their own prefixes; any overlap is removed from `ir`. In
-practice this is near zero, which is the point — it makes a class of error
-impossible rather than unlikely.
+**Foreign cloud ranges are subtracted.** Cloudflare, AWS, Google, Google Cloud,
+Fastly, G-Core, Oracle Cloud and DigitalOcean publish their own prefixes; any
+overlap is removed from `ir`. In practice this is near zero, which is the point
+— it makes a class of error impossible rather than unlikely.
 
 **Every build is cross-checked** against [ipverse](https://github.com/ipverse/rir-ip)
 and [ipdeny](https://www.ipdeny.com), two independent parses of the same
@@ -350,16 +386,16 @@ registry data. The agreement figure appears in every release note. A
 disagreement is reported, never silently merged in.
 
 The build refuses to publish if the Iranian set falls below sane thresholds, if
-a long-standing Iranian block goes missing, or if a known-foreign address such
-as `8.8.8.8` turns up inside it.
+a long-standing Iranian block goes missing, or if a known-foreign or private
+address such as `8.8.8.8` or `192.168.1.1` turns up inside it.
 
 ## How Iranian provider ranges are built
 
-`ir-cdn` holds the address space of Iranian hosting and CDN providers, which is
-not always in Iran: ParsPack's published list includes Leaseweb and Vultr
-space, and ArvanCloud's includes foreign edge nodes. It stays apart from `ir`,
-and `ir-full` is the union of the two, for "everything serving Iranian traffic"
-rather than "machines in Iran".
+`ir-cdn` holds the address space of Iranian hosting, cloud and CDN providers,
+which is not always in Iran: ParsPack's published list includes Leaseweb and
+Vultr space, and ArvanCloud's includes foreign edge nodes. It stays apart from
+`ir`, and `ir-full` is the union of the two, for "everything serving Iranian
+traffic" rather than "machines in Iran".
 
 For each provider the build takes its own published list, if it publishes one,
 plus every prefix announced by the networks (ASNs) that the RIPE database
@@ -368,17 +404,23 @@ handle on every build, so a network a provider registers tomorrow is picked up
 without a code change. Private and bogon ranges are removed. Foreign clouds are
 not subtracted, because ParsPack's real edges are on Vultr.
 
-| Provider | RIPE organisation | Published list |
-|---|---|---|
-| ArvanCloud | `ORG-NAAP1-RIPE`, `ORG-NAAC1-RIPE`, `ORG-AGTL2-RIPE` | yes |
-| Sotoon | `ORG-HUCC1-RIPE`, `ORG-IB117-RIPE` | none — its networks are the only source |
-| Derak | `ORG-ENDC1-RIPE` | yes |
-| IranServer | `ORG-GWSN7-RIPE` | yes |
-| MizbanCloud | `ORG-SAML1-RIPE` | yes |
-| ParsPack | none — it owns no ASN | yes, the only source |
+| Provider | RIPE organisation | Published list | Scope |
+|---|---|---|---|
+| ArvanCloud | `ORG-NAAP1-RIPE`, `ORG-NAAC1-RIPE`, `ORG-AGTL2-RIPE` | yes | `ir-cdn` / `ir-full` |
+| Sotoon | `ORG-HUCC1-RIPE`, `ORG-IB117-RIPE` | yes (`edge.sotoon.ir`) | `ir-cdn` / `ir-full` |
+| Derak | `ORG-ENDC1-RIPE` | yes | `ir-cdn` / `ir-full` |
+| IranServer | `ORG-GWSN7-RIPE` | yes | `ir-cdn` / `ir-full` |
+| MizbanCloud | `ORG-SAML1-RIPE` | yes | `ir-cdn` / `ir-full` |
+| ParsPack | none — it owns no ASN | yes, the only source | `ir-cdn` / `ir-full` |
+| Liara | `ORG-TSAL5-RIPE` | none — ASNs only | `ir-cdn` / `ir-full` |
+| Hamravesh | `ORG-PFHR1-RIPE` | none — ASNs only | `ir-cdn` / `ir-full` |
+| Server.ir | `ORG-MR252-RIPE` | none — ASNs only | domestic (also in `ir`) |
+| Dorna | `ORG-DNL22-RIPE` | none — ASNs only | domestic (also in `ir`) |
+| Regika | `ORG-SC348-RIPE` | none — ASNs only | domestic (also in `ir`) |
 
-`ir-cdn` was 87,374 IPv4 addresses on 2026-10-23. `stats.json` records each
-provider's ASNs and address counts under `audit.providers`.
+`ir-cdn` was 97,944 IPv4 addresses (232 IPv4 + 30 IPv6 prefixes) on 2026-11-20.
+`stats.json` records each provider's ASNs and address counts under
+`audit.providers`.
 
 ## Sources
 
@@ -392,25 +434,26 @@ licence is the upstream's own. Grouped by where each source comes from:
 |---|---|---|---|
 | [RIR delegated statistics](https://www.nro.net/about/rirs/statistics/) | RIPE NCC, APNIC, ARIN, LACNIC, AFRINIC | Registry public data | `ir` IPs: Iranian delegations and ASNs |
 | [RIPE RIS routing table](https://www.ripe.net/analyse/internet-measurements/routing-information-service-ris/) | RIPE NCC | RIPE NCC RIS data (attribution required) | BGP adjustment of `ir`; provider prefixes |
+| [RPKI Validated ROA Payloads](https://console.rpki-client.org/) (mirrored by [Cloudflare](https://rpki.cloudflare.com/)) | OpenBSD rpki-client / RIRs | ISC / RPKI public data | RFC 6811 ROV validation of BGP routes |
 | [RIPE database](https://www.ripe.net/manage-ips-and-asns/db/) | RIPE NCC | RIPE Database (public) | ASNs registered to each provider |
-| [ArvanCloud](https://www.arvancloud.ir/en/dev/ips) | ArvanCloud | All rights reserved | `ir-cdn` |
-| [ParsPack](https://parspack.com) | ParsPack | All rights reserved | `ir-cdn` |
+| [ArvanCloud](https://www.arvancloud.ir/en/dev/ips), [Sotoon](https://edge.sotoon.ir/ip-list.txt), [ParsPack](https://parspack.com) | each provider | Provider-published | `ir-cdn` |
 | [Derak Cloud](https://derak.cloud), [IranServer](https://www.iranserver.com), [MizbanCloud](https://mizbancloud.com) | each provider | Provider-published | `ir-cdn` |
 | [Public Suffix List](https://publicsuffix.org) | Mozilla | MPL-2.0 | filter only: drops foreign shared-hosting suffixes from `ir` |
 | [CERT Polska warning list](https://cert.pl/en/warning-list/) | CERT Polska | free for any use | `phishing` |
 | [Feodo Tracker](https://feodotracker.abuse.ch/blocklist/) | abuse.ch | CC0 | `geoip:malware` |
-| Cloudflare, AWS, Google, Google Cloud, Fastly, G-Core | respective owners | Provider-published | exclusion lists |
+| Cloudflare, AWS, Google, Google Cloud, Fastly, G-Core, Oracle Cloud, DigitalOcean | respective owners | Provider-published | exclusion lists |
 
 **Derived by this project** — computed here from the sources above and below.
 
 | Set | Computed from |
 |---|---|
-| `ir` IPs | RIR registry, adjusted by RIPE RIS routing |
+| `ir` IPs | RIR registry, adjusted by RIPE RIS routing and validated with RPKI ROV |
 | `ir-cdn` | each provider's list, plus what its RIPE-registered networks announce |
 | `ir-full` | `ir` and `ir-cdn` |
 | `geoip:malware` | Feodo Tracker and HaGeZi's IP feed, minus private ranges, every foreign-cloud range and `ir-cdn` |
-| `ir` domains | bootmortis and v2fly, with `.ir` and `.ایران` collapsed and foreign shared-hosting suffixes removed |
-| `ads` | PersianBlocker and HaGeZi Light, minus AdGuard's own allowlists |
+| `ir` domains | bootmortis, v2fly and curated `data/` overrides, with `.ir` and `.ایران` collapsed and foreign shared-hosting suffixes removed |
+| `private` domains | RFC 6761 / 8375 local suffixes and v2fly `PRIVATE` |
+| `ads` / `ads-ir` | PersianBlocker, v2fly `CATEGORY-ADS-IR` and HaGeZi Light, minus AdGuard's own allowlists |
 
 **Maintainer** — the project that curates the list.
 
@@ -422,7 +465,8 @@ licence is the upstream's own. Grouped by where each source comes from:
 | [AdGuard DNS filter](https://github.com/AdguardTeam/AdGuardSDNSFilter) exclusions and exceptions | AdGuard | GPL-3.0 | not a blocklist: names it found to break real sites are removed from `ads` |
 | [NoCoin](https://github.com/hoshsadiq/adblock-nocoin-list) | hoshsadiq | MIT | `cryptominers` |
 | [StevenBlack hosts](https://github.com/StevenBlack/hosts) (porn and gambling) | StevenBlack | MIT | `nsfw` |
-| [v2fly domain-list-community](https://github.com/v2fly/domain-list-community) (`CATEGORY-IR`) | v2fly | MIT | `ir` domains |
+| [v2fly domain-list-community](https://github.com/v2fly/domain-list-community) (`CATEGORY-*-IR`, `CATEGORY-ADS-IR`, `PRIVATE`) | v2fly | MIT | `ir`, `ads-ir`, `private` domains |
+| Curated overrides (`data/ir-domains-add.txt`, `data/ir-domains-exclude.txt`) | IR-Geo-DB | GPL-3.0 | verified missing Iranian services; removal of leaked global domains |
 
 PersianBlocker here is the maintained fork (`PersianBlocker/PersianBlocker`),
 which replaced the original repository.
@@ -438,8 +482,8 @@ authority can't be reached.
 
 Iran Hosted Domains is kept because the government registries behind it
 (enamad.ir, ito.gov.ir) time out from GitHub's servers, so they can't be read
-directly. v2fly's `CATEGORY-IR` is a second, independent list, and the `.ir`
-and `.ایران` rules need no source at all.
+directly. v2fly's Iranian categories and the audited `data/` override files
+supplement it, and the `.ir` and `.ایران` rules need no source at all.
 
 Contains RIPE NCC RIS data © RIPE NCC
 
@@ -449,23 +493,28 @@ Contains RIPE NCC RIS data © RIPE NCC
   Tracker, also from abuse.ch, is CC0 and is used.
 - **OpenPhish**: no redistribution.
 - **Spamhaus DROP**: no licence granted.
+- **filteryab/ir-sanctioned-domain**: no open-source licence granted.
 - **Phishing.Database**: abandoned on 2026-10-02, and it listed whole platforms
   such as `sites.google.com` and `bit.ly`.
+- **uBOPa** (`nimasaj/uBOPa`): blocks legitimate Iranian services such as
+  `zarin.link`, `mootanroo.com` and `0098sms.com`.
+- **DynX-AntiBan-Domains**: stale and noisy, mixing Iranian tax/government
+  subdomains with foreign services.
 - **AdGuard DNS filter, as a blocklist**: it doubled the size of `ads` and blocks
   `doubleclick.net` outright. Only its allowlists are used.
 
-Found a missing Iranian domain or a false positive? Report it to the upstream
-source — fixing it there fixes it for everyone. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Found a missing Iranian domain or a false positive? Report it upstream (and
+optionally open a PR against `data/`). See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 **Set sizes vary a lot, and small does not mean broken.** `cryptominers` is a
 few hundred entries because its source tracks *currently active* miners rather
 than accumulating history. `geoip:malware` is Feodo Tracker plus HaGeZi's IP
-feed, about 31,500 prefixes (36,635 addresses) on 2026-10-23 after private,
+feed, about 29,800 prefixes (34,889 addresses) on 2026-11-20 after private,
 cloud and `ir-cdn` ranges are removed. `geoip:phishing` is deliberately empty:
 no clean, licensed phishing IP feed exists, and an empty set is better than the
-previous one, which carried Google and Cloudflare addresses. `ads` is about 70,000 domains;
-`malware`, `phishing` and `nsfw` are the large ones. Live counts are always in
-`stats.json`.
+previous one, which carried Google and Cloudflare addresses. `ads` is about
+91,000 domains; `malware`, `phishing` and `nsfw` are the large ones. Live
+counts are always in `stats.json`.
 
 No blocklist may cover a shared platform such as `sites.google.com`, `bit.ly`
 or `github.io`, since a suffix rule there would take down every site hosted
@@ -475,20 +524,24 @@ under it; `verify.py` refuses to publish a build that does.
 
 One upstream having a bad day must not reach you as broken data.
 
-**Mirrors.** Where a source has them, the build tries them in order: HaGeZi on
-GitLab, Codeberg and jsDelivr; jsDelivr for PersianBlocker, NoCoin, StevenBlack
-and AdGuard's allowlists; the Public Suffix List's GitHub mirror; two mirrors
-of the Iranian domain list. Requests are conditional, so an unchanged file
-costs a `304`. A URL is tried up to four times on a server error and twice on
-a timeout or refused connection before the next mirror is tried.
+**Mirrors.** Where a source has them, the build tries them in order: cross-RIR
+mirrors for every RIR delegation file (`ftp.ripe.net`, `ftp.lacnic.net`,
+`ftp.apnic.net`); Cloudflare's RPKI JSON mirror for `rpki-client`; HaGeZi on
+GitLab, Codeberg and jsDelivr; jsDelivr for v2fly, PersianBlocker, NoCoin,
+StevenBlack and AdGuard's allowlists; the Public Suffix List's GitHub mirror;
+two mirrors of the Iranian domain list. Requests are conditional, so an
+unchanged file costs a `304`, and every transfer has a hard total-time deadline
+so a degraded slow-trickling server fails over to its mirror instead of hanging
+the build. A URL is tried up to four times on a server error and twice on a
+timeout or refused connection before the next mirror is tried.
 
 **Validation.** A download is believed only after it passes. An HTML page is
 rejected, and so is a file under the source's minimum size or entry count, or
 one that shrank beyond its limit (half, by default) against the last good copy.
-RIS routing dumps older than 3 days and RIR delegation files older than 30 are
-rejected too: both are regenerated at least daily, so an old one means the
-publisher's generator stalled. A rejected download is treated exactly like a
-URL that is down.
+RIS routing dumps and RPKI VRP tables older than 3 days and RIR delegation
+files older than 30 are rejected too: all are regenerated daily, so an old one
+means the publisher's generator stalled. A rejected download is treated exactly
+like a URL that is down.
 
 **An owned copy of every input.** Each validated input is committed to this
 repository's `state` branch, whose `NOTICE.md` names each input's licence and
@@ -500,7 +553,7 @@ stored copy, for a window set by how fast the data goes stale:
 | Provider lists, RIPE ASN lookups | 90 days |
 | Iranian domain lists, Public Suffix List, ads and nsfw lists, cloud guard ranges | 30 days |
 | RIR delegations, RIS routing, cross-checks | 14 days |
-| Threat feeds: malware, phishing and cryptominer lists, threat IPs | 7 days |
+| RPKI VRPs, threat feeds (malware, phishing, cryptominers, threat IPs) | 7 days |
 
 After its window an optional source is dropped and the set is built from what
 remains. The two required sources — RIPE NCC's delegation file and the Iranian
@@ -513,26 +566,30 @@ changed, and does nothing if the previous release can't be fetched even after
 retries; the log says why. A manual run of the workflow has an `allow_shrink`
 switch for use after reading why.
 
-**Provenance.** `stats.json` records, for every source, its status (`fresh`,
+**Zero-downtime releases and provenance.** New daily releases are uploaded as a
+draft and published atomically once every asset is in place; same-day re-runs
+update assets in place so `/releases/latest/download/` never returns 404
+mid-publish. `stats.json` records, for every source, its status (`fresh`,
 `not-modified`, `stale` or `dropped`), the URL it was read from, the sha256 of
-the file, dates and licence. When a source had to fall back to its stored copy
-or was dropped, the release notes carry a "Source health" table.
+the file, dates and licence. `manifest.json` records the byte size and SHA-256
+of every published file. When a source had to fall back to its stored copy or
+was dropped, the release notes carry a "Source health" table.
 
 ## Design notes
 
 **`.ir` and `.ایران` collapse to one rule each.** Every consumer here matches
 subdomains, so each Iranian TLD is a single suffix entry instead of tens of
 thousands of names. Around 69,500 names become two rules, and matching gets
-faster.
+faster. Unicode IDNs are normalised to ASCII punycode (RFC 3492) automatically.
 
 **Shared hosting is not Iranian.** A suffix rule for `dyndns.org` or `co.com`
 would route every site hosted under it, so names that are rules in the Public
-Suffix List's private section are removed from `ir` (five on 2026-10-23).
-`liara.run` stays: Liara is an Iranian host.
+Suffix List's private section are removed from `ir` (five on 2026-11-20).
+`liara.run` and `iran.liara.run` stay: Liara is an Iranian host.
 
 **Known false positives are removed.** Names that AdGuard's own allowlists
-mark as breaking real sites are subtracted from `ads` and `ads-ir` (521 names
-on 2026-10-23).
+mark as breaking real sites are subtracted from `ads` and `ads-ir` (630 names
+on 2026-11-20).
 
 **Redundant subdomains are pruned.** If `example.com` is in a set,
 `ads.example.com` is dead weight.
@@ -544,12 +601,14 @@ on 2026-10-23).
 through interval collapsing, so an exact duplicate cannot survive. The build
 then refuses to publish unless it can prove that, per file: no repeated
 domain, no prefix contained inside another, no domain already covered by a
-parent in the same set, no value appearing under two match types in a `.dat`
-category, nothing present in both `domain` and `domain_suffix` in a sing-box
-rule-set, and nothing listed as both `+.x` and `x` in a Clash provider.
+suffix parent in the same set, no value appearing under two match types in a
+`.dat` category, nothing present in both `domain` and `domain_suffix` in a
+sing-box rule-set, and nothing listed as both `+.x` and `x` in a Clash
+provider.
 
-**Match types survive.** sing-box, Xray, Clash and Surge all distinguish exact,
-suffix, keyword and regex matches. Formats that cannot express one — hosts
+**Match types survive.** sing-box, Xray, Clash, Surge, AdGuard and RPZ all
+distinguish exact and suffix matches (and sing-box, Xray, Clash and Surge also
+preserve keyword and regex matches). Formats that cannot express one — hosts
 files, adlists — drop what they cannot represent and record the count, rather
 than emitting a rule that means something else.
 
@@ -562,7 +621,7 @@ fails falls back to its stored copy, and the release notes say so.
 
 ```bash
 git clone https://github.com/Arman2122/IR-Geo-DB && cd IR-Geo-DB
-( for t in build/test_*.py; do python3 "$t" || exit 1; done )   # offline tests
+( for t in build/test_*.py; do python3 -W error::ResourceWarning "$t" || exit 1; done )   # offline tests
 python3 build/build.py --outdir dist --cache .cache
 python3 build/verify.py dist
 ```
@@ -578,15 +637,16 @@ move `--lkg-dir`, pass the same path to `verify.py`.
 
 ```
 build/geodat.py         Xray .dat protobuf reader/writer
-build/model.py          normalisation — merging, pruning, match types, filters
+build/model.py          normalisation — merging, pruning, IDN/punycode, match types, filters
 build/sources.py        source registry (SOURCES, PROVIDERS) and per-feed parsers
-build/fetch.py          mirrors, conditional requests, validation, the state store
-build/bgp.py            routing adjustment of `ir` and provider prefixes
+build/fetch.py          mirrors, conditional requests, transfer deadlines, validation, state store
+build/bgp.py            routing adjustment, RFC 6811 RPKI ROV and provider prefixes
 build/emitters.py       one function per output format
 build/build.py          orchestration and set-level guards
 build/release_notes.py  release notes from stats.json
-build/verify.py         post-build acceptance checks
+build/verify.py         post-build acceptance checks and SHA-256 verification
 build/test_*.py         offline tests (testkit.py is their shared helper)
+data/                   curated Iranian domain additions and global-domain exclusions
 ```
 
 ## Branches

@@ -1,0 +1,38 @@
+name: Missing Iranian domain or domain exclusion
+description: Request adding a verified Iranian non-.ir domain or excluding a non-Iranian domain from `ir`
+labels: ["domain-data"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        `.ir` and `.ایران` domains are already covered automatically by single TLD rules.
+        For other domains, reporting upstream to [bootmortis/iran-hosted-domains](https://github.com/bootmortis/iran-hosted-domains/issues)
+        or [v2fly/domain-list-community](https://github.com/v2fly/domain-list-community/issues)
+        helps the wider ecosystem; you can also request an addition to `data/ir-domains-add.txt`
+        or an exclusion in `data/ir-domains-exclude.txt` here.
+
+  - type: dropdown
+    id: action
+    attributes:
+      label: Requested change
+      options:
+        - Add verified Iranian non-.ir domain to `ir`
+        - Exclude non-Iranian / blocked domain from `ir`
+    validations:
+      required: true
+
+  - type: input
+    id: domain
+    attributes:
+      label: Domain
+      placeholder: "example.com"
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Service description, resolved IP / origin ASN, and why it should be added or excluded.
+    validations:
+      required: true

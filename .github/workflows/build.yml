@@ -19,6 +19,7 @@ on:
     branches: [main]
     paths:
       - "build/**"
+      - "data/**"
       - ".github/workflows/build.yml"
 
 permissions:
@@ -45,7 +46,8 @@ jobs:
 
       - name: Unit tests
         run: |
-          for t in build/test_*.py; do echo "== $t"; python3 "$t" || exit 1; done
+          python3 -W error::ResourceWarning build/geodat.py
+          for t in build/test_*.py; do echo "== $t"; python3 -W error::ResourceWarning "$t" || exit 1; done
 
       # The compilers are pinned and checksummed rather than fetched as
       # "latest": they run in a job that can write to the repository, and an
@@ -54,8 +56,8 @@ jobs:
       # hand, taking the sha256 from the asset's "digest" in the releases API.
       - name: Install sing-box
         env:
-          VER: "1.14.0"
-          SHA256: 2375de6999f4f56ab46b4fc5ddf26a6aba1d3e61a0f4e7ddec2f4690457d5f63
+          VER: "1.14.4"
+          SHA256: 699a1b510aa4396b2176d32d1181920399ebf1e267835da6f3b598d0f7c24968
         run: |
           set -euo pipefail
           curl -sfL --retry 5 --retry-all-errors -o sb.tar.gz \
@@ -68,8 +70,8 @@ jobs:
 
       - name: Install mihomo
         env:
-          VER: "v1.19.30"
-          SHA256: cf06ce2c7d1421bdbda14ee4a5b6046672dc35ebf8eecd8e77504ec3c0ed9a84
+          VER: "v1.19.34"
+          SHA256: 223fab877e5795ce780ba39902e5f0b1113c1256ae244a7160f1165e017e9ccc
         run: |
           set -euo pipefail
           curl -sfL --retry 5 --retry-all-errors -o mihomo.gz \
@@ -171,13 +173,25 @@ jobs:
             echo ""
             python3 - <<'PY'
           import json
-          s = json.load(open("dist/stats.json"))
+          with open("dist/stats.json", encoding="utf-8") as fh:
+              s = json.load(fh)
           print("| set | kind | entries |")
           print("|---|---|---|")
           for k, v in s["ip_sets"].items():
               print(f"| `{k}` | ip | {v['ipv4'] + v['ipv6']:,} |")
           for k, v in s["domain_sets"].items():
               print(f"| `{k}` | domain | {v['suffix'] + v['full']:,} |")
+          bgp = (s.get("audit") or {}).get("bgp") or {}
+          if bgp.get("applied"):
+              print("")
+              print(f"**BGP:** +{bgp.get('added_addresses', 0):,} / "
+                    f"-{bgp.get('removed_addresses', 0):,} IPv4 addresses "
+                    f"({bgp.get('ir_asns', 0):,} IR ASNs)")
+              if bgp.get("rpki_applied"):
+                  print(f"**RPKI ROV:** {bgp.get('rpki_vrps', 0):,} VRPs — "
+                        f"rescued +{bgp.get('rpki_rescued_addresses', 0):,} addrs, "
+                        f"blocked {bgp.get('rpki_blocked_foreign_prefixes', 0)} invalid foreign removals, "
+                        f"rejected {bgp.get('rpki_rejected_ir_prefixes', 0)} foreign-ROA-invalid IR additions")
           PY
             # the release notes' own "Source health" section, up to the next
             # "## " heading; absent when every source was served fresh
@@ -202,21 +216,34 @@ jobs:
           VERSION: ${{ steps.meta.outputs.version }}
         run: |
           set -euo pipefail
-          # one release per day: replace today's if this is a re-run
-          if gh release view "$VERSION" >/dev/null 2>&1; then
-            echo "replacing existing release $VERSION"
-            gh release delete "$VERSION" --yes --cleanup-tag
-            sleep 5
-          fi
-          # Loose files, not archives: v2ray, sing-box, mihomo and RouterOS
-          # all fetch a single file by URL and cannot open a zip.
+          # Zero-downtime publishing:
+          # - Re-run on the same day: clobber assets in-place, prune any
+          #   obsolete asset names, then update notes so latest/download/
+          #   never returns 404 mid-upload.
+          # - New day: upload all assets into a draft release first, then
+          #   publish atomically so clients never see a half-uploaded release.
           echo "uploading $(ls release-assets | wc -l) assets"
-          gh release create "$VERSION" \
-            --title "$VERSION" \
-            --notes-file NOTES.md \
-            --latest \
-            release-assets/* \
-            "ir-geo-db-${VERSION}.zip"
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "updating existing release $VERSION in place"
+            gh release upload "$VERSION" --clobber \
+              release-assets/* \
+              "ir-geo-db-${VERSION}.zip"
+            expected=$( (cd release-assets && ls -1; echo "ir-geo-db-${VERSION}.zip") | sort )
+            existing=$(gh release view "$VERSION" --json assets --jq '.assets[].name' | sort)
+            for stale in $(comm -23 <(printf '%s\n' "$existing") <(printf '%s\n' "$expected")); do
+              echo "removing stale asset $stale"
+              gh release delete-asset "$VERSION" "$stale" --yes
+            done
+            gh release edit "$VERSION" --title "$VERSION" --notes-file NOTES.md --draft=false --latest
+          else
+            gh release create "$VERSION" \
+              --draft \
+              --title "$VERSION" \
+              --notes-file NOTES.md \
+              release-assets/* \
+              "ir-geo-db-${VERSION}.zip"
+            gh release edit "$VERSION" --draft=false --latest
+          fi
 
       - name: Push dist branch
         if: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}
@@ -237,13 +264,14 @@ jobs:
           git push -f origin dist
 
       # jsDelivr caches branch refs, so a force-push to dist can keep serving
-      # yesterday's file. Purging the paths people actually fetch keeps the
-      # CDN honest — it matters because raw.githubusercontent.com is widely
-      # blocked from Iran and the CDN is the working mirror.
+      # yesterday's file. Wait briefly for GitHub/jsDelivr ref propagation,
+      # then purge the paths people actually fetch — critical because
+      # raw.githubusercontent.com is widely blocked from Iran.
       - name: Purge jsDelivr cache
         if: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}
         continue-on-error: true
         run: |
+          sleep 20
           purge() {
             code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 \
               "https://purge.jsdelivr.net/gh/${GITHUB_REPOSITORY}@dist/$1" || true)
@@ -251,8 +279,13 @@ jobs:
           }
           for f in xray/geoip.dat xray/geoip-lite.dat xray/geosite.dat \
                    xray/geosite-lite.dat xray/geosite-security.dat \
-                   manifest.json stats.json SHA256SUMS; do purge "$f"; done
-          for s in ir ads ads-ir malware phishing cryptominers nsfw; do
+                   manifest.json stats.json SHA256SUMS \
+                   adguard/block-all.txt dnsmasq/block-all-block.conf \
+                   wireguard/ir-exclude-allowedips.conf \
+                   wireguard/ir-full-exclude-allowedips.conf \
+                   amnezia/ir-domains.json amnezia/ir-ipv4.json \
+                   amnezia/ir-full-ipv4.json; do purge "$f"; done
+          for s in ir private ads ads-ir malware phishing cryptominers nsfw; do
             purge "sing-box/rule-set/geosite-${s}.srs"
             purge "mihomo/${s}-domain.mrs"
           done
@@ -262,7 +295,8 @@ jobs:
             purge "text/${s}-ipv4.txt"
           done
           for f in ir-ipv4-reset.rsc ir-ipv4.rsc ir-ipv6-reset.rsc \
-                   ir-dns.rsc auto-update.rsc adlist-block-all.txt; do
+                   ir-full-ipv4-reset.rsc ir-dns.rsc ir-dns-reset.rsc \
+                   auto-update.rsc adlist-block-all.txt; do
             purge "mikrotik/$f"
           done
 

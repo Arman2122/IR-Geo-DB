@@ -1,8 +1,11 @@
 blank_issues_enabled: true
 contact_links:
-  - name: Missing Iranian domain
+  - name: Upstream Iranian domains (bootmortis)
     url: https://github.com/bootmortis/iran-hosted-domains/issues
-    about: Iranian domain lists are maintained upstream; report it there and the next daily build picks it up.
+    about: Upstream Iranian domain registry; reporting there helps every project that consumes it.
+  - name: Upstream Iranian domains (v2fly)
+    url: https://github.com/v2fly/domain-list-community/issues
+    about: Community-maintained category-ir and Iranian service lists.
   - name: Persian ad or tracker not blocked
     url: https://github.com/PersianBlocker/PersianBlocker/issues
     about: Persian ad rules are maintained upstream by the PersianBlocker fork.

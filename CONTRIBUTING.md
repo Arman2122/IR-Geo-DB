@@ -13,15 +13,30 @@ itself. See section 2.)
 
 | What you found | Where it belongs |
 |---|---|
-| An Iranian site missing from the `ir` domain set | [bootmortis/iran-hosted-domains](https://github.com/bootmortis/iran-hosted-domains/issues) |
+| An Iranian site missing from the `ir` domain set | [bootmortis/iran-hosted-domains](https://github.com/bootmortis/iran-hosted-domains/issues) or [v2fly/domain-list-community](https://github.com/v2fly/domain-list-community/issues) (and optionally a verified PR to `data/ir-domains-add.txt` here) |
+| A non-Iranian or blocked domain leaked into `ir` | Upstream, plus a PR to `data/ir-domains-exclude.txt` here |
 | A Persian ad or tracker not blocked | [PersianBlocker/PersianBlocker](https://github.com/PersianBlocker/PersianBlocker/issues), the maintained fork |
 | A false positive in the ads list | [PersianBlocker](https://github.com/PersianBlocker/PersianBlocker/issues) or [HaGeZi](https://github.com/hagezi/dns-blocklists/issues) |
 | A wrong malware / phishing entry | [HaGeZi](https://github.com/hagezi/dns-blocklists/issues) (malware), [CERT Polska](https://cert.pl/en/warning-list/) (phishing) |
 | A wrong cryptominers / nsfw entry | [NoCoin](https://github.com/hoshsadiq/adblock-nocoin-list/issues) (cryptominers), [StevenBlack](https://github.com/StevenBlack/hosts/issues) (nsfw) |
 | An IP prefix wrongly attributed to Iran | See below — this one is usually ours |
 
-Once upstream merges it, the next daily build picks it up automatically. No
-action needed here.
+Once upstream merges it, the next daily build picks it up automatically (and
+any duplicate in `data/ir-domains-add.txt` deduplicates cleanly).
+
+### Curated domain overrides (`data/`)
+
+When an active Iranian non-`.ir` service is missing from upstream registries
+(or a global domain such as `asia.pool.ntp.org` leaks into them), this
+repository maintains two small, auditable override files:
+
+- `data/ir-domains-add.txt` — DNS-verified live Iranian non-`.ir` services
+- `data/ir-domains-exclude.txt` — global or blocked domains excluded from `ir`
+
+Every entry must be a clean lowercase ASCII domain (`.ir` and `.ایران` need no
+entry because the TLD rules cover them) with a short inline comment naming the
+service and why it belongs. `build/test_units.py` validates both files on every
+pull request.
 
 ## 2. IP attribution problems
 
@@ -105,7 +120,7 @@ Providers are added by RIPE organisation handle, in `PROVIDERS` in
 `build/sources.py`:
 
 ```python
-"Example Cloud": {"orgs": ["ORG-XXXX1-RIPE"], "lists": ["example"]},
+"Example Cloud": {"orgs": ["ORG-XXXX1-RIPE"], "lists": ["example"], "domestic": False},
 ```
 
 - Find the handle by looking up one of the provider's ASNs in the RIPE database
@@ -114,6 +129,11 @@ Providers are added by RIPE organisation handle, in `PROVIDERS` in
 - Every build looks up the ASNs registered to each organisation and takes every
   prefix they announce in RIS, so a network the provider registers later is
   picked up without a code change.
+- Set `"domestic": True` **only** for offshore-registered Iranian domestic
+  networks whose BGP transit is 100 % through Iranian upstreams with zero
+  foreign PoPs (verified via RIPEstat / BGP topology). Global or foreign-edge
+  CDNs keep `"domestic": False` so their foreign edges stay in `ir-cdn` and
+  `ir-full` without entering `ir`.
 - Each new organisation also needs an entry in `_RIPE_ORG_FLOOR` in
   `build/sources.py`: the fewest ASNs the lookup may return, about half of those
   found and at least 1, with the count in a comment. Without it `sources.py`

@@ -53,21 +53,25 @@ stops, nothing is published and the previous release stays current.
 
 **A bad result stops the build**
 
-- **Registry plus routing, with anomaly limits.** An address is Iranian only if
-  a Regional Internet Registry delegated it to an organisation registered in
-  Iran, adjusted by RIPE NCC RIS routing data, where the most specific route
-  wins. If routing would add more than 20 % or remove more than 10 % of the
-  registry's addresses, IPv4 or IPv6, the build fails: that is a leak or a
-  broken dump, not a change in Iran. An Iranian prefix under a route that only
-  foreign networks announce is not added, since that is the shape of a hijack.
-  Without routing data, `ir` is registry-only.
+- **Registry plus routing and RPKI ROV, with anomaly limits.** An address is
+  Iranian only if a Regional Internet Registry delegated it to an organisation
+  registered in Iran, adjusted by RIPE NCC RIS routing data and validated with
+  RFC 6811 RPKI Validated ROA Payloads (`rpki-client`, mirrored by Cloudflare).
+  The most specific route wins; an Iranian prefix under a foreign-only covering
+  route is excluded as hijack-shaped unless a cryptographically valid ROA
+  authorises the Iranian origin; foreign-ROA-invalid Iranian announcements are
+  never added; and RPKI-invalid (`invalid_asn`) foreign routes cannot remove
+  Iranian registry space. If routing would add more than 20 % or remove more
+  than 10 % of the registry's addresses, IPv4 or IPv6, the build fails: that is
+  a leak or a broken dump, not a change in Iran. Without routing data, `ir` is
+  registry-only.
 - **Known-good and known-bad probes.** The build requires `2.144.0.0/14` (TCI)
-  in the Iranian set and `8.8.8.8` out of it, and refuses a set that is
-  implausibly small (`ir` under 1,000 IPv4 prefixes, 100 IPv6 prefixes or 1,000
-  domains, or `ads` under 1,000). `verify.py` then checks that seven
-  long-standing Iranian addresses are in, and that seven others — Google DNS,
-  Cloudflare DNS, Cloudflare, Microsoft, Google and AWS addresses, and an
-  RFC 1918 address — are not.
+  in the Iranian set, `8.8.8.8` and all RFC 1918 / private ranges out of it,
+  both Iranian ccTLDs and anchor Iranian domains in `ir`, and global domains
+  such as `google.com` and `asia.pool.ntp.org` out of it, refusing any set that
+  is implausibly small. `verify.py` then re-verifies IPv4, IPv6, routed, RPKI
+  and domain anchors, `ir-full` superset integrity, format syntax, and every
+  single SHA-256 digest in `SHA256SUMS` and `manifest.json`.
 - **Day-over-day guard.** The build refuses to publish if `ir` IPv4 addresses
   fall more than 5 % against the previous release, `ir` domains more than
   10 %, or a blocklist more than 60 %. A set whose source list changed, or a
