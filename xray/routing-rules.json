@@ -1,0 +1,40 @@
+{
+  "_comment": "Xray / v2ray routing block. Place geoip.dat and geosite.dat next to the core binary or in its asset dir. Swap geoip:ir for geoip:ir-full to also direct Iranian CDN foreign edges.",
+  "domainStrategy": "IPIfNonMatch",
+  "rules": [
+    {
+      "type": "field",
+      "outboundTag": "block",
+      "domain": [
+        "geosite:ads",
+        "geosite:malware",
+        "geosite:phishing",
+        "geosite:cryptominers"
+      ]
+    },
+    {
+      "type": "field",
+      "outboundTag": "block",
+      "ip": [
+        "geoip:malware",
+        "geoip:phishing"
+      ]
+    },
+    {
+      "type": "field",
+      "outboundTag": "direct",
+      "domain": [
+        "geosite:ir",
+        "geosite:private"
+      ]
+    },
+    {
+      "type": "field",
+      "outboundTag": "direct",
+      "ip": [
+        "geoip:ir",
+        "geoip:private"
+      ]
+    }
+  ]
+}
