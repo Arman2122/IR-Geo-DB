@@ -1,0 +1,13 @@
+{
+  "attribution": "",
+  "bytes": 236787,
+  "entries": 1118,
+  "etag": "\"6ae1682d-39cf3\"",
+  "homepage": "https://docs.oracle.com/en-us/iaas/Content/General/Concepts/addressranges.htm",
+  "invalid": 0,
+  "last_modified": "Wed, 28 Oct 2026 03:12:45 GMT",
+  "license": "Provider-published",
+  "sha256": "c070ef9ff7bea6d63e56e19578d083ffbdbd535c1344d6b74d36d23cce2cd228",
+  "url_used": "https://docs.oracle.com/en-us/iaas/tools/public_ip_ranges.json",
+  "validated_at": "2026-11-21T11:33:45Z"
+}

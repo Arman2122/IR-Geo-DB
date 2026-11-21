@@ -1,0 +1,13 @@
+{
+  "attribution": "",
+  "bytes": 9008,
+  "entries": 2,
+  "etag": "",
+  "homepage": "https://www.ripe.net/manage-ips-and-asns/db/",
+  "invalid": 0,
+  "last_modified": "",
+  "license": "RIPE Database (public)",
+  "sha256": "8fa14bb709cfd7b465245f744fd0e0b9fdb1e5184f1b0e2aab7cd6ebf5fe7892",
+  "url_used": "https://rest.db.ripe.net/search.json?query-string=ORG-ENDC1-RIPE&inverse-attribute=org&type-filter=aut-num&flags=no-referenced",
+  "validated_at": "2026-11-21T11:33:45Z"
+}

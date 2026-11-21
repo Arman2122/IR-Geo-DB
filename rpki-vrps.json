@@ -1,0 +1,13 @@
+{
+  "attribution": "",
+  "bytes": 108248850,
+  "entries": 1037853,
+  "etag": "",
+  "homepage": "https://www.rpki-client.org",
+  "invalid": 0,
+  "last_modified": "Sat, 21 Nov 2026 11:31:18 GMT",
+  "license": "ISC / RPKI public data",
+  "sha256": "9252ffa90099bf3130b87354cfc9347ea525ec1e2245a6f8fdf3eecf48eda001",
+  "url_used": "https://console.rpki-client.org/vrps.json",
+  "validated_at": "2026-11-21T11:33:45Z"
+}
