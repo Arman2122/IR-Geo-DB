@@ -1,0 +1,1602 @@
+{
+  "version": "v2026.11.28",
+  "generated": "2026-11-28 12:07:48 UTC",
+  "files": [
+    {
+      "file": "adguard/ads-ir.txt",
+      "entries": 290,
+      "note": "",
+      "bytes": 5538,
+      "sha256": "6e05ae73dae4b4101c7ef514b65454c855e79da199740ad944c16cdf1a56a31f"
+    },
+    {
+      "file": "adguard/ads.txt",
+      "entries": 80332,
+      "note": "",
+      "bytes": 2007524,
+      "sha256": "31cbd3f61fee86c6d2df69f74bf55c8c4b2a541e9c09ed54ceb42cc2df52e603"
+    },
+    {
+      "file": "adguard/block-all.txt",
+      "entries": 295349,
+      "note": "",
+      "bytes": 6662767,
+      "sha256": "71cb0afb9c538056215a2e4a7f89d0d49cf8966553f76c4554911b9dede1037c"
+    },
+    {
+      "file": "adguard/cryptominers.txt",
+      "entries": 296,
+      "note": "",
+      "bytes": 6093,
+      "sha256": "0a54e98768b26714e905ca07f8332f8e909e124e2471ac8a8df077b9afc42f4f"
+    },
+    {
+      "file": "adguard/malware.txt",
+      "entries": 171420,
+      "note": "",
+      "bytes": 3654931,
+      "sha256": "cbec189871d7a5ca8726856e316be0ba092f54cdea325f2969ed9b5874ac2320"
+    },
+    {
+      "file": "adguard/nsfw.txt",
+      "entries": 52052,
+      "note": "",
+      "bytes": 967194,
+      "sha256": "70ca3d1c4519bb9c7c399cb3b182d4615e3bfd71da8a9ec6046a5a0cab540a01"
+    },
+    {
+      "file": "adguard/phishing.txt",
+      "entries": 106818,
+      "note": "",
+      "bytes": 2397893,
+      "sha256": "b6a5f78b00694aebc4b5dad7b7416c4c0d0f9f4fc67282bd7a9b82ec14e559e4"
+    },
+    {
+      "file": "amnezia/ir-cdn-ipv4.json",
+      "entries": 232,
+      "note": "",
+      "bytes": 13286,
+      "sha256": "c854b9f3b341408fd1b895c66880d75595282e37b212d6100b283ca82b799c03"
+    },
+    {
+      "file": "amnezia/ir-domains.json",
+      "entries": 57598,
+      "note": "",
+      "bytes": 3205488,
+      "sha256": "eb168f015a2c87d788aaf4d8ba62ccc9e52492c56af6562d448ae5b2752cc171"
+    },
+    {
+      "file": "amnezia/ir-full-ipv4.json",
+      "entries": 1985,
+      "note": "",
+      "bytes": 112540,
+      "sha256": "5cd77ea20696058d59e614a3410adaf4a1cf4950149c730c611b7a7d39f27805"
+    },
+    {
+      "file": "amnezia/ir-ipv4.json",
+      "entries": 1914,
+      "note": "",
+      "bytes": 108437,
+      "sha256": "804df090b8acd2c604189365f9140594a1f798e4036b8b317f26191540a60b47"
+    },
+    {
+      "file": "clash/ads-domain.list",
+      "entries": 80332,
+      "note": "",
+      "bytes": 1927207,
+      "sha256": "b230b8281948a237e68c8e0aedc39bcbe176d353fd690f6cb3ed97ece2f3ad0b"
+    },
+    {
+      "file": "clash/ads-domain.yaml",
+      "entries": 80332,
+      "note": "",
+      "bytes": 2409201,
+      "sha256": "93fbf50243ec227547ac5e094a4e053f6f0b256685829d6127ecbad396454117"
+    },
+    {
+      "file": "clash/ads-ir-domain.list",
+      "entries": 290,
+      "note": "",
+      "bytes": 5263,
+      "sha256": "7c5b8ff90e9a2d2ed828beecd22badbcd9367f9872569d78186f51e5657c06cd"
+    },
+    {
+      "file": "clash/ads-ir-domain.yaml",
+      "entries": 290,
+      "note": "",
+      "bytes": 7005,
+      "sha256": "ec1e647feff1a00ddeaf0992c07cd43fa91a09307981cb3e84a73c104567edf3"
+    },
+    {
+      "file": "clash/config-snippet.yaml",
+      "entries": 5,
+      "note": "",
+      "bytes": 1455,
+      "sha256": "1b5e875362568c6c2591b271302994c38a492286ec0677d40cf6e05aacb7fe23"
+    },
+    {
+      "file": "clash/cryptominers-domain.list",
+      "entries": 296,
+      "note": "",
+      "bytes": 5812,
+      "sha256": "8244ab361f50beb5b3e1ba6f8549070ba008e4b586b89b67234f0344f3c19fd0"
+    },
+    {
+      "file": "clash/cryptominers-domain.yaml",
+      "entries": 296,
+      "note": "",
+      "bytes": 7590,
+      "sha256": "5cac1c8c688ff7ca8688ef178d2a6020b11d4c71d54877d9baccdc8673ef2daf"
+    },
+    {
+      "file": "clash/ir-cdn-ip.list",
+      "entries": 262,
+      "note": "",
+      "bytes": 4648,
+      "sha256": "34031f28582cfafa7bafb66d2a7d4136233058ffbdccbc5b2b2c8c1ec50f4d2e"
+    },
+    {
+      "file": "clash/ir-cdn-ip.yaml",
+      "entries": 262,
+      "note": "",
+      "bytes": 6222,
+      "sha256": "6ecf748926ad81f567f7f691bbbea095d6ae4042fcf84074ae6bd7706daef974"
+    },
+    {
+      "file": "clash/ir-domain.list",
+      "entries": 57598,
+      "note": "",
+      "bytes": 959418,
+      "sha256": "d68fb72827f083f34337655380f25ef58ad49e7c42b539ad2df58540a3c80d91"
+    },
+    {
+      "file": "clash/ir-domain.yaml",
+      "entries": 57598,
+      "note": "",
+      "bytes": 1305008,
+      "sha256": "10e6dae0e1431aa81a14b4cee8d1dbabb9bd073d0c2c119bcbd23475354ac03d"
+    },
+    {
+      "file": "clash/ir-full-ip.list",
+      "entries": 2627,
+      "note": "",
+      "bytes": 41477,
+      "sha256": "74f75436b8d0039eec8b37c080e70f3285e6d7cd212ff7143784b484feb89998"
+    },
+    {
+      "file": "clash/ir-full-ip.yaml",
+      "entries": 2627,
+      "note": "",
+      "bytes": 57241,
+      "sha256": "97a01e54cd976c4dac2123227bafbe2a01b784d909fc69adb4649da35e6b76df"
+    },
+    {
+      "file": "clash/ir-ip.list",
+      "entries": 2554,
+      "note": "",
+      "bytes": 40143,
+      "sha256": "667947d95f4b30b3b4441b8f0767e77ade27763c0ab2e46b60e5ee6c49ddc435"
+    },
+    {
+      "file": "clash/ir-ip.yaml",
+      "entries": 2554,
+      "note": "",
+      "bytes": 55469,
+      "sha256": "d97b7c594d12b00872c176523967b62f87d60cdd77484cb0f7f53369388067c0"
+    },
+    {
+      "file": "clash/malware-domain.list",
+      "entries": 171420,
+      "note": "",
+      "bytes": 3483526,
+      "sha256": "79002062ae31ba4ec30bb7ac33ce443e20c50a6e642283bfcba90274bc6509d1"
+    },
+    {
+      "file": "clash/malware-domain.yaml",
+      "entries": 171420,
+      "note": "",
+      "bytes": 4512048,
+      "sha256": "da06f2617c3efe5c794bb0b299994d6e87c92055a6925b726c3ecc8c879697b0"
+    },
+    {
+      "file": "clash/malware-ip.list",
+      "entries": 29277,
+      "note": "",
+      "bytes": 505642,
+      "sha256": "074b237885ffcf0d966f948badefcd3ea2bb9906e03bacfa7501c7faeed4b256"
+    },
+    {
+      "file": "clash/malware-ip.yaml",
+      "entries": 29277,
+      "note": "",
+      "bytes": 681306,
+      "sha256": "746e99acf55a6150d40fff338e19f30f676398d1f5ec44eac2536fe0634190fb"
+    },
+    {
+      "file": "clash/nsfw-domain.list",
+      "entries": 52052,
+      "note": "",
+      "bytes": 915157,
+      "sha256": "12b3259efd02f545069caee1caecd042521ea57aebdf0480f9836d85ffdf9344"
+    },
+    {
+      "file": "clash/nsfw-domain.yaml",
+      "entries": 52052,
+      "note": "",
+      "bytes": 1227471,
+      "sha256": "7106189ca76d35bc21c3e0783b0a545e4588a8ea368e828c0feaf03d3aa944bc"
+    },
+    {
+      "file": "clash/phishing-domain.list",
+      "entries": 106818,
+      "note": "",
+      "bytes": 2291090,
+      "sha256": "925716f6076396f9817013ac402c89fd150a72417b00b1ca511b6b32ecf08c5e"
+    },
+    {
+      "file": "clash/phishing-domain.yaml",
+      "entries": 106818,
+      "note": "",
+      "bytes": 2932000,
+      "sha256": "f38f12ede1452f5777f3f143b7dca23627fe94cc7a7ea7d6896ef108c133cdb0"
+    },
+    {
+      "file": "clash/phishing-ip.list",
+      "entries": 0,
+      "note": "",
+      "bytes": 215,
+      "sha256": "c70af54cc57a2ee719c07fe8c74b1b072d1efb43138ab3abc2821a5018c6d451"
+    },
+    {
+      "file": "clash/phishing-ip.yaml",
+      "entries": 0,
+      "note": "",
+      "bytes": 217,
+      "sha256": "06043c6e29bc2cc756afa5b06ecd2754fca69633243d0cae53973a6e3e5c9af1"
+    },
+    {
+      "file": "clash/private-domain.list",
+      "entries": 135,
+      "note": "",
+      "bytes": 3027,
+      "sha256": "91a734ea80b1b06579ec508ba597cedd7bd63c7ed5b811c97d04af0de32caf96"
+    },
+    {
+      "file": "clash/private-domain.yaml",
+      "entries": 135,
+      "note": "",
+      "bytes": 3839,
+      "sha256": "f22d29473d9e481ef1ccc1c5c19a87fa3b6ce1ea32e73aa0024610e2458d2c51"
+    },
+    {
+      "file": "clash/private-ip.list",
+      "entries": 18,
+      "note": "",
+      "bytes": 468,
+      "sha256": "ff1ff4c446eefc2e97af65a60aa2a7f785159b559f75cf0342242c324a5f6d20"
+    },
+    {
+      "file": "clash/private-ip.yaml",
+      "entries": 18,
+      "note": "",
+      "bytes": 578,
+      "sha256": "136c8c6ff9e7484cfe2a217ce5aa5f2823c54a978591946109455267412d3c2e"
+    },
+    {
+      "file": "dnsmasq/ads-block.conf",
+      "entries": 80332,
+      "note": "",
+      "bytes": 2569856,
+      "sha256": "37cabd95d90779b41e2985bd4b60d483f5daeda58e496a22c9db7ea160a55be1"
+    },
+    {
+      "file": "dnsmasq/ads-ir-block.conf",
+      "entries": 290,
+      "note": "",
+      "bytes": 7576,
+      "sha256": "2f447f5623656405c2c2c8d7cd38d1430a0772e116e29f0b8c386a7b60f141d2"
+    },
+    {
+      "file": "dnsmasq/block-all-block.conf",
+      "entries": 295349,
+      "note": "",
+      "bytes": 8730218,
+      "sha256": "3dbe91c5e05a25e566c2ee3e8025c6d217ef8a8c588eb03cfc362e99457c79d6"
+    },
+    {
+      "file": "dnsmasq/cryptominers-block.conf",
+      "entries": 296,
+      "note": "",
+      "bytes": 8173,
+      "sha256": "32925ea8da1db2a12278a88cf4df9e0010ed98d1ac989f82ddb9d1a76a8e3ef7"
+    },
+    {
+      "file": "dnsmasq/ir-route.conf",
+      "entries": 57598,
+      "note": "",
+      "bytes": 2168979,
+      "sha256": "3a16cf9734b6c5cc0dbf382b0af50b4805893369e5a937fdee4b6df633e1fd6b"
+    },
+    {
+      "file": "dnsmasq/malware-block.conf",
+      "entries": 171420,
+      "note": "",
+      "bytes": 4854879,
+      "sha256": "45ea03ba01f42043addea6da136055c4ac639d9ecfe941c1dd2263be3bdbcef8"
+    },
+    {
+      "file": "dnsmasq/nsfw-block.conf",
+      "entries": 52052,
+      "note": "",
+      "bytes": 1331566,
+      "sha256": "d073ba0677a8faae77d8158c5384b404c892139fd95e1acd0c215fdf5314ee2e"
+    },
+    {
+      "file": "dnsmasq/phishing-block.conf",
+      "entries": 106818,
+      "note": "",
+      "bytes": 3145627,
+      "sha256": "1a173c5662260684523ef7b895faccfae0b8248d445da4cd622fc0f84c9e1624"
+    },
+    {
+      "file": "hosts/ads-ir.txt",
+      "entries": 290,
+      "note": "",
+      "bytes": 6985,
+      "sha256": "bb288c3cd1f5a5e6f7f9c80b953da6e88a03cfbeb3c8969e9331d1bd59f39792"
+    },
+    {
+      "file": "hosts/ads.txt",
+      "entries": 80332,
+      "note": "",
+      "bytes": 2409181,
+      "sha256": "9ce1b30e4e8b8a1398e867e48d8a5e88514451d61103e901f45ee4ae06d87d5d"
+    },
+    {
+      "file": "hosts/block-all.txt",
+      "entries": 295349,
+      "note": "",
+      "bytes": 8139509,
+      "sha256": "a0469749983a4bf6eb1871e7841c12d7ed848a01a9ee4060fa526642d50ea2a2"
+    },
+    {
+      "file": "hosts/cryptominers.txt",
+      "entries": 296,
+      "note": "",
+      "bytes": 7570,
+      "sha256": "b9fc738e68a8dde4a084c9800fb2ee952c94eec2ee34588edbc3b940c3b63fdc"
+    },
+    {
+      "file": "hosts/malware.txt",
+      "entries": 171420,
+      "note": "",
+      "bytes": 4512028,
+      "sha256": "292087961e1edb8ebdfe3a875e73775946209f4b2b4866aa6e39e65a6fb43bf4"
+    },
+    {
+      "file": "hosts/nsfw.txt",
+      "entries": 52052,
+      "note": "",
+      "bytes": 1227451,
+      "sha256": "658aecb8eec4673a4a4b8ddee8b4f1be44084ee1d14d1a16c3ff51972f5bb911"
+    },
+    {
+      "file": "hosts/phishing.txt",
+      "entries": 106818,
+      "note": "",
+      "bytes": 2931980,
+      "sha256": "cf15d3e5215b664b7d35bd0c8d57f0d8f27957339cebbb37bd782985797ec53b"
+    },
+    {
+      "file": "ipset/ir-cdn.ipset",
+      "entries": 262,
+      "note": "",
+      "bytes": 10253,
+      "sha256": "a173257bc7df814f446bc9dbb5ffb54fe4bec57ea2b8f7d7739ec3b3b377316a"
+    },
+    {
+      "file": "ipset/ir-full.ipset",
+      "entries": 2627,
+      "note": "",
+      "bytes": 99378,
+      "sha256": "7a8fd529a5997e43d3f7029aabdd5bd1b11d7e6a3f025be9336e46c243f45762"
+    },
+    {
+      "file": "ipset/ir.ipset",
+      "entries": 2554,
+      "note": "",
+      "bytes": 83648,
+      "sha256": "94c912a71d4eb5b9f1b0cdf152f0f9376dbbf05ca7ff31698175694450147100"
+    },
+    {
+      "file": "ipset/malware.ipset",
+      "entries": 29277,
+      "note": "",
+      "bytes": 1149779,
+      "sha256": "3062046a87574c983184fde101439535f042d0d0ea64fa25c273d57f6c029462"
+    },
+    {
+      "file": "ipset/phishing.ipset",
+      "entries": 0,
+      "note": "",
+      "bytes": 195,
+      "sha256": "5a6067f43e660757224d2beaaf51327b388fb0692aa7f85c7ff0cfe77046522e"
+    },
+    {
+      "file": "ipset/private.ipset",
+      "entries": 18,
+      "note": "",
+      "bytes": 971,
+      "sha256": "6909ab2c9f2e9987815e98055c7599d690fff8f2bf6699b970d7d0a07f241299"
+    },
+    {
+      "file": "json/ir-cdn-ip.json",
+      "entries": 262,
+      "note": "",
+      "bytes": 6536,
+      "sha256": "c1d4b2e5725afd9c16a51b78be8285c813c03ea3b87032c20045e3db5164ebce"
+    },
+    {
+      "file": "json/ir-full-ip.json",
+      "entries": 2627,
+      "note": "",
+      "bytes": 59932,
+      "sha256": "61c6f787886349049a3153658553439fed8355be0197fb71750b9d838f9cb499"
+    },
+    {
+      "file": "json/ir-ip.json",
+      "entries": 2554,
+      "note": "",
+      "bytes": 58016,
+      "sha256": "6195eb505d43f29795ed22dca0c03fe17fa22c9da1a916be2e00103db88a9ed0"
+    },
+    {
+      "file": "json/malware-ip.json",
+      "entries": 29277,
+      "note": "",
+      "bytes": 710572,
+      "sha256": "01f9074738a97e40fe74c931fd1e01116c0552d4501a2858b8ce0b3eeceea70f"
+    },
+    {
+      "file": "json/phishing-ip.json",
+      "entries": 0,
+      "note": "",
+      "bytes": 190,
+      "sha256": "fa6f8027c5813d1f80e30518bf7727d41879c59392cc3579a1228157424236a7"
+    },
+    {
+      "file": "json/private-ip.json",
+      "entries": 18,
+      "note": "",
+      "bytes": 584,
+      "sha256": "d58fe12df061b0a20e535af9bd3f1774a0a2364d4a1c27f2bfbf58cfcfea8bef"
+    },
+    {
+      "file": "mihomo/ads-domain.mrs",
+      "entries": 0,
+      "note": "",
+      "bytes": 716998,
+      "sha256": "658e49501063da491415e5c5700e79ae01aae5007673b984554abc2e732af80f"
+    },
+    {
+      "file": "mihomo/ads-ir-domain.mrs",
+      "entries": 0,
+      "note": "",
+      "bytes": 3035,
+      "sha256": "9fba8737b025950cbd6c80f9307d3931c07140cb0687d6f24a611f0c823cc508"
+    },
+    {
+      "file": "mihomo/cryptominers-domain.mrs",
+      "entries": 0,
+      "note": "",
+      "bytes": 3364,
+      "sha256": "6522bdba2094517b26a5ffa3d9e02f88dfc32d2edad0d10e06d6b79e2fca3e12"
+    },
+    {
+      "file": "mihomo/ir-cdn-ip.mrs",
+      "entries": 0,
+      "note": "",
+      "bytes": 1571,
+      "sha256": "cf35c13567d4a8c88bcd1bc7e82ed592d396dea486caa3fe9f481f36aad4c4c2"
+    },
+    {
+      "file": "mihomo/ir-domain.mrs",
+      "entries": 0,
+      "note": "",
+      "bytes": 322610,
+      "sha256": "cd3929258e490ac4dc6fdd9466e4e4619684982c5c415d332fa93e4c0654f6ea"
+    },
+    {
+      "file": "mihomo/ir-full-ip.mrs",
+      "entries": 0,
+      "note": "",
+      "bytes": 15311,
+      "sha256": "145e1f9f456c5dccebac984e65dde2441a97bbec297c86b334c85a227d495f33"
+    },
+    {
+      "file": "mihomo/ir-ip.mrs",
+      "entries": 0,
+      "note": "",
+      "bytes": 13809,
+      "sha256": "347dd37b95a84ce04e2461b88f3edf479d862144db9fb06e9f47ce74ead0e1b5"
+    },
+    {
+      "file": "mihomo/malware-domain.mrs",
+      "entries": 0,
+      "note": "",
+      "bytes": 1412775,
+      "sha256": "e583924f5ab05a758a56b213dd7cdedb18b1ea955d7a25681ceb4030a9875f25"
+    },
+    {
+      "file": "mihomo/malware-ip.mrs",
+      "entries": 0,
+      "note": "",
+      "bytes": 76634,
+      "sha256": "b71a50cadf78d6aa7333ab96a28baf9f7a6358533729a173d7367265a39f2f4c"
+    },
+    {
+      "file": "mihomo/nsfw-domain.mrs",
+      "entries": 0,
+      "note": "",
+      "bytes": 353585,
+      "sha256": "1e3cd4965a9cb4b75a5a0fbf8caa134d4e4d0c4c5fbad9f512326beae61466e8"
+    },
+    {
+      "file": "mihomo/phishing-domain.mrs",
+      "entries": 0,
+      "note": "",
+      "bytes": 957096,
+      "sha256": "7db96cbcf8052bdb434db34dfdcae890dac2782d3d38acf00f4bccda644ae634"
+    },
+    {
+      "file": "mihomo/private-domain.mrs",
+      "entries": 0,
+      "note": "",
+      "bytes": 791,
+      "sha256": "5e015dc8bc438b5a2bdaf9adb204e078059ab024813c5cb030f2e54b8be100db"
+    },
+    {
+      "file": "mihomo/private-ip.mrs",
+      "entries": 0,
+      "note": "",
+      "bytes": 155,
+      "sha256": "076ea1da10b442f01c6fb3b86a66411727a15df69d70e8d600a8a458b07a8bb0"
+    },
+    {
+      "file": "mikrotik/adlist-ads-ir.txt",
+      "entries": 290,
+      "note": "",
+      "bytes": 6985,
+      "sha256": "290656218b1a8b6e49bde394dfccf93753287939a4405e31ec30274d4e23440e"
+    },
+    {
+      "file": "mikrotik/adlist-ads.txt",
+      "entries": 80332,
+      "note": "",
+      "bytes": 2409181,
+      "sha256": "b74241a3ad422cf7fbcca1ee084a95c5c765953a91b3a94d403800be063b4bc7"
+    },
+    {
+      "file": "mikrotik/adlist-block-all.txt",
+      "entries": 295349,
+      "note": "",
+      "bytes": 8139509,
+      "sha256": "5786a1f3f3764d3e9b86f928f7dcf4a0e513a3798744a6f1076d0a8eaf441888"
+    },
+    {
+      "file": "mikrotik/adlist-cryptominers.txt",
+      "entries": 296,
+      "note": "",
+      "bytes": 7570,
+      "sha256": "f89d117cc9862adf3ce93038b100890b79504830e3dd80f84282789bfbd2dca1"
+    },
+    {
+      "file": "mikrotik/adlist-malware.txt",
+      "entries": 171420,
+      "note": "",
+      "bytes": 4512028,
+      "sha256": "6c78e0fe7f61d0c6f785fb9c18fdbc965a91c0509c1f450e950e23dd8f587e40"
+    },
+    {
+      "file": "mikrotik/adlist-nsfw.txt",
+      "entries": 52052,
+      "note": "",
+      "bytes": 1227451,
+      "sha256": "cd641d26514dd86d7d5f7b39cdec477d6681bb42c54fe8acd0a68852cb0e8ead"
+    },
+    {
+      "file": "mikrotik/adlist-phishing.txt",
+      "entries": 106818,
+      "note": "",
+      "bytes": 2931980,
+      "sha256": "7a819224cdb73492eaa19979174c566376c4eda0f1973b2818e0f5d6a55526ee"
+    },
+    {
+      "file": "mikrotik/auto-update.rsc",
+      "entries": 1,
+      "note": "",
+      "bytes": 1180,
+      "sha256": "a627fcbc7a6c8e94bdc1cc8349a7774b04bbf1957e4a6cb85ba7346da9214e63"
+    },
+    {
+      "file": "mikrotik/ir-cdn-ipv4-reset.rsc",
+      "entries": 232,
+      "note": "",
+      "bytes": 9760,
+      "sha256": "e28431135cb6108e1cdf46eb85196fb89d62b61dae184ca3e34ededf31f02406"
+    },
+    {
+      "file": "mikrotik/ir-cdn-ipv4.rsc",
+      "entries": 232,
+      "note": "",
+      "bytes": 9722,
+      "sha256": "ae3c59cac393db69c270c0e08d17f51917c98a7870196f58425ed68382c21dde"
+    },
+    {
+      "file": "mikrotik/ir-cdn-ipv6-reset.rsc",
+      "entries": 30,
+      "note": "",
+      "bytes": 1671,
+      "sha256": "e4c2a07524b723d09ddea3da26e6bce3f5d1b4373e3f41a801f91192c463753f"
+    },
+    {
+      "file": "mikrotik/ir-cdn-ipv6.rsc",
+      "entries": 30,
+      "note": "",
+      "bytes": 1633,
+      "sha256": "b15287233d4231194f801739f363589e7b394fd0b2a25b92014199bfe7d77e64"
+    },
+    {
+      "file": "mikrotik/ir-dns-reset.rsc",
+      "entries": 57598,
+      "note": "",
+      "bytes": 7064874,
+      "sha256": "62ce8b92c38458fc803cd6ebf88906f6ae05bc2513c474dd2938e110b02d74ff"
+    },
+    {
+      "file": "mikrotik/ir-dns.rsc",
+      "entries": 57598,
+      "note": "",
+      "bytes": 7064838,
+      "sha256": "b2a5686063d6fcbbcde0d61fcdc48797ac28e89ab47d80237636f3855d2b1f59"
+    },
+    {
+      "file": "mikrotik/ir-full-ipv4-reset.rsc",
+      "entries": 1985,
+      "note": "",
+      "bytes": 81302,
+      "sha256": "789653886bd55de44a00761c1b46a8ce0c7b52798fa61d8d8ec29150ef356f1f"
+    },
+    {
+      "file": "mikrotik/ir-full-ipv4.rsc",
+      "entries": 1985,
+      "note": "",
+      "bytes": 81263,
+      "sha256": "7562daaa22788495db316ccc4f5f70fde12864e4a5b9ea423cf684fd87e2fa11"
+    },
+    {
+      "file": "mikrotik/ir-full-ipv6-reset.rsc",
+      "entries": 642,
+      "note": "",
+      "bytes": 26451,
+      "sha256": "788030e1066169c1667ae4c8f7e1268ff44662a6b56da2d072d5b6c9828bc75d"
+    },
+    {
+      "file": "mikrotik/ir-full-ipv6.rsc",
+      "entries": 642,
+      "note": "",
+      "bytes": 26412,
+      "sha256": "c59fab9f01cfd827177cec3e29c2934e85694462d23ed9f976ab4ef9d8e05e8e"
+    },
+    {
+      "file": "mikrotik/ir-ipv4-reset.rsc",
+      "entries": 1914,
+      "note": "",
+      "bytes": 68654,
+      "sha256": "a4538182b528e40ab3622a20cf3e5109e4d19f1abc21056cf4de4628072fadee"
+    },
+    {
+      "file": "mikrotik/ir-ipv4.rsc",
+      "entries": 1914,
+      "note": "",
+      "bytes": 68620,
+      "sha256": "3393f6473520079e44a3a802bf917f5bebb4250b6b647f610128d983252bac89"
+    },
+    {
+      "file": "mikrotik/ir-ipv6-reset.rsc",
+      "entries": 640,
+      "note": "",
+      "bytes": 23049,
+      "sha256": "e02c8f96746aa8735ca2e62ef5beb3d119b3a0ba8b0bbd0c1d1f281f7996b1a6"
+    },
+    {
+      "file": "mikrotik/ir-ipv6.rsc",
+      "entries": 640,
+      "note": "",
+      "bytes": 23015,
+      "sha256": "3d70456a75f870b0cb9fd8c33b90e66e009f4913cf6eb5628714073bb5e6672f"
+    },
+    {
+      "file": "mikrotik/malware-ipv4-reset.rsc",
+      "entries": 29277,
+      "note": "",
+      "bytes": 1237642,
+      "sha256": "a0c2ce67bef0f4873b658338ff3ef659f9003ecbed7aa2d1aaba59a6dcfab503"
+    },
+    {
+      "file": "mikrotik/malware-ipv4.rsc",
+      "entries": 29277,
+      "note": "",
+      "bytes": 1237603,
+      "sha256": "0ac9dd3264d15ddc9393749d04aa479769b3c6e09aab34081f9fe014df68e9b1"
+    },
+    {
+      "file": "mikrotik/private-ipv4-reset.rsc",
+      "entries": 14,
+      "note": "",
+      "bytes": 858,
+      "sha256": "d9ea10c6c292df52bb204c6a76d2a6e501cc7f8ad55e589591db7fc49d3c2287"
+    },
+    {
+      "file": "mikrotik/private-ipv4.rsc",
+      "entries": 14,
+      "note": "",
+      "bytes": 819,
+      "sha256": "c8d976d16c94a06177d2f740df5b026807afaef4a92e470b86ef78ff88e66da4"
+    },
+    {
+      "file": "mikrotik/private-ipv6-reset.rsc",
+      "entries": 4,
+      "note": "",
+      "bytes": 455,
+      "sha256": "d2eb36d3ceb9c5bd6e7dbe408770c998c84167a09db242f19b2b223aa8d8d1c1"
+    },
+    {
+      "file": "mikrotik/private-ipv6.rsc",
+      "entries": 4,
+      "note": "",
+      "bytes": 416,
+      "sha256": "7fc8e761405d0e461989878a91485c43105c4516656fc95e5654941e91152fc1"
+    },
+    {
+      "file": "nftables/ir-cdn.nft",
+      "entries": 262,
+      "note": "",
+      "bytes": 5528,
+      "sha256": "cee8373b57d71d94945409737696939b1b8f3f4920a7e8f54e75b07f26550375"
+    },
+    {
+      "file": "nftables/ir-full.nft",
+      "entries": 2627,
+      "note": "",
+      "bytes": 46510,
+      "sha256": "3fee6ccec1ebf9e1678c624a439da99e6057f7f070473f7c218aae77cefed254"
+    },
+    {
+      "file": "nftables/ir.nft",
+      "entries": 2554,
+      "note": "",
+      "bytes": 45013,
+      "sha256": "5838d03cd52ba4f36a90e364296cd672e85791bf211f660ab813f8b96027b9ec"
+    },
+    {
+      "file": "nftables/malware.nft",
+      "entries": 29277,
+      "note": "",
+      "bytes": 557101,
+      "sha256": "c5bda6eb95d88a4f5d64017c46bbfdaf1959fd55b6fbdb737f28f82304ef592f"
+    },
+    {
+      "file": "nftables/phishing.nft",
+      "entries": 0,
+      "note": "",
+      "bytes": 233,
+      "sha256": "0757849cbd1e78310b8b5492134e7d8f855ccf7dc709144d18e5b7e479df9fe2"
+    },
+    {
+      "file": "nftables/private.nft",
+      "entries": 18,
+      "note": "",
+      "bytes": 930,
+      "sha256": "701429345009d423d556511d29ec0cb62fd5eeba2a12b77a980350cd3211e10e"
+    },
+    {
+      "file": "quantumultx/ads-domain.list",
+      "entries": 80332,
+      "note": "",
+      "bytes": 3292846,
+      "sha256": "bdfdd5e56730b710afa55546d7124f992323edf7c6c8cd7f769431eca17ebd68"
+    },
+    {
+      "file": "quantumultx/ads-ir-domain.list",
+      "entries": 290,
+      "note": "",
+      "bytes": 10188,
+      "sha256": "ccba1c349120baa07d9eee494172796946b606fe74da531c1f5e25785f1de45d"
+    },
+    {
+      "file": "quantumultx/cryptominers-domain.list",
+      "entries": 296,
+      "note": "",
+      "bytes": 10839,
+      "sha256": "4d0cf91e9b8031b3bae0bf947ac2072015a31ccc2780481a242f2c4026d9fdac"
+    },
+    {
+      "file": "quantumultx/ir-cdn-ip.list",
+      "entries": 262,
+      "note": "",
+      "bytes": 8603,
+      "sha256": "36ddd2f457463a615a2759009f024b7bac4c5a0e004a6348c957d87452a76765"
+    },
+    {
+      "file": "quantumultx/ir-domain.list",
+      "entries": 57598,
+      "note": "",
+      "bytes": 1938579,
+      "sha256": "001bc79d42069571e1a4ad79a00a608dfa4b858fa79f3039123e0f36c2b8b882"
+    },
+    {
+      "file": "quantumultx/ir-full-ip.list",
+      "entries": 2627,
+      "note": "",
+      "bytes": 81519,
+      "sha256": "683438867946f0d439da8579dfd8360ca8c3d3ac4ca05a64b0bda015b42b22d9"
+    },
+    {
+      "file": "quantumultx/ir-ip.list",
+      "entries": 2554,
+      "note": "",
+      "bytes": 79088,
+      "sha256": "a7939e187e4d4083e59f37cffafb95f4e60682beebaa293149bdad495863947d"
+    },
+    {
+      "file": "quantumultx/malware-ip.list",
+      "entries": 29277,
+      "note": "",
+      "bytes": 944792,
+      "sha256": "9809db49232247479d1b1583b61fa179caecc04ed46767c7ebc34b478cdaf949"
+    },
+    {
+      "file": "quantumultx/nsfw-domain.list",
+      "entries": 52052,
+      "note": "",
+      "bytes": 1800036,
+      "sha256": "6debe5654f661839911171e2c6c86c3d3b69dcae75ce57f517d9168d7af41a1d"
+    },
+    {
+      "file": "quantumultx/phishing-ip.list",
+      "entries": 0,
+      "note": "",
+      "bytes": 210,
+      "sha256": "cd1e3c642919edbca4d34c084ce446c7bba8cfa925fcec9a4a448927593c705c"
+    },
+    {
+      "file": "quantumultx/private-domain.list",
+      "entries": 135,
+      "note": "",
+      "bytes": 5247,
+      "sha256": "2c7f9247241bc521dbc9bf3e604bc9f0b198d865ba8668ee6250f7f4d757d478"
+    },
+    {
+      "file": "quantumultx/private-ip.list",
+      "entries": 18,
+      "note": "",
+      "bytes": 737,
+      "sha256": "eb8de1f40b3d832d96626835ed5488f9432c27f5db99bbcc5cf915f9efdc86f8"
+    },
+    {
+      "file": "rpz/ads-ir.zone",
+      "entries": 290,
+      "note": "",
+      "bytes": 14387,
+      "sha256": "a4b2995f1f99eb9238c500fcdda862874e983e0ee9de1cb8f5a3fff92bb54eb6"
+    },
+    {
+      "file": "rpz/ads.zone",
+      "entries": 80332,
+      "note": "",
+      "bytes": 4978839,
+      "sha256": "145313d66cfde883c88d9213b08440a46ec6735a5fd93a295a07b26976c76224"
+    },
+    {
+      "file": "rpz/cryptominers.zone",
+      "entries": 296,
+      "note": "",
+      "bytes": 15616,
+      "sha256": "2fcea5b59fff0bffb8475881040ed1ca0473825a864250840a8ca9dfce3a1fd2"
+    },
+    {
+      "file": "rpz/nsfw.zone",
+      "entries": 52052,
+      "note": "",
+      "bytes": 2558884,
+      "sha256": "c721af9e954206e618616d5471955cc838beab25d0a7d22cbf17758bd8c9ae96"
+    },
+    {
+      "file": "sing-box/config-snippet.json",
+      "entries": 7,
+      "note": "",
+      "bytes": 2352,
+      "sha256": "f48372a180e0aaf7ce7974be3c206ab0ff350960181b80476687d3cf8c2ad82c"
+    },
+    {
+      "file": "sing-box/rule-set/geoip-ir-cdn.srs",
+      "entries": 0,
+      "note": "",
+      "bytes": 1455,
+      "sha256": "fc735b9f3ea25ece7ca3bd2701f39d71fb3885c2489ec3e57e255f22ff628910"
+    },
+    {
+      "file": "sing-box/rule-set/geoip-ir-full.srs",
+      "entries": 0,
+      "note": "",
+      "bytes": 13668,
+      "sha256": "158620ce9b35fa8a20240e69746fde35f4f0209a2b6aa3c9e05446d09241ffdd"
+    },
+    {
+      "file": "sing-box/rule-set/geoip-ir.srs",
+      "entries": 0,
+      "note": "",
+      "bytes": 13243,
+      "sha256": "66b6658bc06092dd4ae1d2df3e0c73bf036db368d97e527376944fb44f136d3b"
+    },
+    {
+      "file": "sing-box/rule-set/geoip-malware.srs",
+      "entries": 0,
+      "note": "",
+      "bytes": 79402,
+      "sha256": "a0db8a517f1d5262dda77dad273b2c7ae46e69fe104773d39a1d1d10434d8029"
+    },
+    {
+      "file": "sing-box/rule-set/geoip-phishing.srs",
+      "entries": 0,
+      "note": "",
+      "bytes": 17,
+      "sha256": "e8761df11aa59e7b70efe0f961db00f8f74df9e927d052e5f7f6c337c25c2a34"
+    },
+    {
+      "file": "sing-box/rule-set/geoip-private.srs",
+      "entries": 0,
+      "note": "",
+      "bytes": 144,
+      "sha256": "f70eddc8d1bed904627fd411ecd4a337de499f7e868d2dfc3a24d16e81012308"
+    },
+    {
+      "file": "sing-box/rule-set/geosite-ads-ir.srs",
+      "entries": 0,
+      "note": "",
+      "bytes": 2986,
+      "sha256": "3713d59ada7aa7045873816346cd42e0843b4f8ff917eeb13649fbd45ff0678f"
+    },
+    {
+      "file": "sing-box/rule-set/geosite-ads.srs",
+      "entries": 0,
+      "note": "",
+      "bytes": 708437,
+      "sha256": "82ffd56ba59b8483f619fb92b72c66e977282c057afdbca20e007d474bd0e939"
+    },
+    {
+      "file": "sing-box/rule-set/geosite-cryptominers.srs",
+      "entries": 0,
+      "note": "",
+      "bytes": 3294,
+      "sha256": "a654798d1eb070c3a68d47df6ff3e437942e672d904c89fc52ccd2ca5b32a12f"
+    },
+    {
+      "file": "sing-box/rule-set/geosite-ir.srs",
+      "entries": 0,
+      "note": "",
+      "bytes": 310445,
+      "sha256": "b4e023efc3133ef0e275ad65d7ebd5b48832759213a2effeb9c9e6e5b08fcb9f"
+    },
+    {
+      "file": "sing-box/rule-set/geosite-malware.srs",
+      "entries": 0,
+      "note": "",
+      "bytes": 1395638,
+      "sha256": "129ffa3b62169334f61e80a5ac553c561ceed9bace5db6b91234f2757cb3534a"
+    },
+    {
+      "file": "sing-box/rule-set/geosite-nsfw.srs",
+      "entries": 0,
+      "note": "",
+      "bytes": 342071,
+      "sha256": "04b4b19fd1c53354a9c1964cc4196cf88061324c85d450e5de2e413d490dd6d4"
+    },
+    {
+      "file": "sing-box/rule-set/geosite-phishing.srs",
+      "entries": 0,
+      "note": "",
+      "bytes": 938614,
+      "sha256": "511f02abd2d3470cbcadca3af94cee01948ba5ed4ec4b2221c8f83b58908be86"
+    },
+    {
+      "file": "sing-box/rule-set/geosite-private.srs",
+      "entries": 0,
+      "note": "",
+      "bytes": 769,
+      "sha256": "33df621964e841ac3e4499748aa3872805bc6996f6216b2f971faf80dc8ecee8"
+    },
+    {
+      "file": "sing-box/source/geoip-ir-cdn.json",
+      "entries": 262,
+      "note": "",
+      "bytes": 7257,
+      "sha256": "5e99081062f5f3113288d9f1dccaa09b2fa525c08d023adec4d08dd4ee0eddf6"
+    },
+    {
+      "file": "sing-box/source/geoip-ir-full.json",
+      "entries": 2627,
+      "note": "",
+      "bytes": 69999,
+      "sha256": "38ff22b0acd715cf67c5e00d291dee78791d6b93f3cc4127ac851f2864c48e0a"
+    },
+    {
+      "file": "sing-box/source/geoip-ir.json",
+      "entries": 2554,
+      "note": "",
+      "bytes": 67963,
+      "sha256": "ec3bdc738817cada27296a88ab8126d5cec236c4dcf89573cde07b9ce2c277e3"
+    },
+    {
+      "file": "sing-box/source/geoip-malware.json",
+      "entries": 29277,
+      "note": "",
+      "bytes": 827471,
+      "sha256": "f7838a11b0acefe834bc708956ffe6a0b412e4f935b95fa61957f5222972f6ca"
+    },
+    {
+      "file": "sing-box/source/geoip-phishing.json",
+      "entries": 0,
+      "note": "",
+      "bytes": 69,
+      "sha256": "80e743cb5f37cf1fc5886fab09068b613cd6c268b73df1509e3a348dc2a6601c"
+    },
+    {
+      "file": "sing-box/source/geoip-private.json",
+      "entries": 18,
+      "note": "",
+      "bytes": 497,
+      "sha256": "b6b539f183da6876c6bda8ada5e523d357a2377e09935e51fb53dfe8ff10659d"
+    },
+    {
+      "file": "sing-box/source/geosite-ads-ir.json",
+      "entries": 290,
+      "note": "",
+      "bytes": 7676,
+      "sha256": "9ec65aa705c9c994954aff8cdc98ff74b43dc13854c32c1b1b7a7898a93b032a"
+    },
+    {
+      "file": "sing-box/source/geosite-ads.json",
+      "entries": 80332,
+      "note": "",
+      "bytes": 2649974,
+      "sha256": "83b605ab88a1b3de2ea30c5d3219bb07edbb5bb6bd8139d98f058504a5f35980"
+    },
+    {
+      "file": "sing-box/source/geosite-cryptominers.json",
+      "entries": 296,
+      "note": "",
+      "bytes": 8326,
+      "sha256": "9ccf702ee3bc8fd3d8c008d8385980e32e02407af0625c0d8cb43dd0cda4bbe1"
+    },
+    {
+      "file": "sing-box/source/geosite-ir.json",
+      "entries": 57598,
+      "note": "",
+      "bytes": 1477626,
+      "sha256": "9d04c1a1172ad324dc8d26e3791bcc5e0dabb39d2145d1a527281b0bde1c7525"
+    },
+    {
+      "file": "sing-box/source/geosite-malware.json",
+      "entries": 171420,
+      "note": "",
+      "bytes": 5026137,
+      "sha256": "898c13628ea15695a8cac9a8af73304117793447b574df9bfab103db3812fad8"
+    },
+    {
+      "file": "sing-box/source/geosite-nsfw.json",
+      "entries": 52052,
+      "note": "",
+      "bytes": 1383469,
+      "sha256": "2c8a849e5aaf38a9f2c4713eb01adc9a35f55db0f4f115e93f0ce4293e5338b4"
+    },
+    {
+      "file": "sing-box/source/geosite-phishing.json",
+      "entries": 106818,
+      "note": "",
+      "bytes": 3252303,
+      "sha256": "f84b8a46eea7f29e6dd84b03fbe2c7d8f6174f19350c8b605a0ee35e6ccfa821"
+    },
+    {
+      "file": "sing-box/source/geosite-private.json",
+      "entries": 135,
+      "note": "",
+      "bytes": 4116,
+      "sha256": "6b75dc2d08c43f11a1bc96abe8698613405afae91cbabd5582dfd91cee6f564e"
+    },
+    {
+      "file": "smartdns/ads-block.conf",
+      "entries": 80332,
+      "note": "",
+      "bytes": 2650176,
+      "sha256": "2c75fdd0c348d2a6f077d892d693c800e72efe9edafa87601db632ae6773c4c1"
+    },
+    {
+      "file": "smartdns/ads-ir-block.conf",
+      "entries": 290,
+      "note": "",
+      "bytes": 7854,
+      "sha256": "67b48c3c69632b0a71ede527d5ca313d628378b9e9caed3922c1e989ba9ca628"
+    },
+    {
+      "file": "smartdns/cryptominers-block.conf",
+      "entries": 296,
+      "note": "",
+      "bytes": 8457,
+      "sha256": "520b2629024fd967a36858529d5ee10c40c5fe9ae17ecad475bda2226436215d"
+    },
+    {
+      "file": "smartdns/ir-route.conf",
+      "entries": 57598,
+      "note": "",
+      "bytes": 1823434,
+      "sha256": "9df8bab2e9058b90639218dc24680843c5b68b3c85de2ae3bb2f0cb1186133aa"
+    },
+    {
+      "file": "smartdns/nsfw-block.conf",
+      "entries": 52052,
+      "note": "",
+      "bytes": 1383606,
+      "sha256": "b9ee1c832dcf274917be55e170131ba82830338a1d46e700ab54a42895a750da"
+    },
+    {
+      "file": "stats.json",
+      "entries": 0,
+      "note": "",
+      "bytes": 49821,
+      "sha256": "11e0869da6fba8e87affbc6d50c81f77ea42a60499bee50d511ad4aaef24ef96"
+    },
+    {
+      "file": "surge/ads-domain.list",
+      "entries": 80332,
+      "note": "",
+      "bytes": 2891180,
+      "sha256": "0e5a623060df6849d3afe52bcf65bf2c4cf82eaab56b12d0113fa49b46096782"
+    },
+    {
+      "file": "surge/ads-domainset.txt",
+      "entries": 80332,
+      "note": "",
+      "bytes": 1846858,
+      "sha256": "1b8325ea80acb860fcb2c0bb09ab6196bf810cd3e55ab2acb069d7e4830bc874"
+    },
+    {
+      "file": "surge/ads-ir-domain.list",
+      "entries": 290,
+      "note": "",
+      "bytes": 8732,
+      "sha256": "1e8ea6f94af1d5e4168593edb669830e19c173bccf4e87b59094e60a17f4d747"
+    },
+    {
+      "file": "surge/ads-ir-domainset.txt",
+      "entries": 290,
+      "note": "",
+      "bytes": 4956,
+      "sha256": "e2c137b30786094aebf977468e5725a3624e66e458d5280db9627a08f898eb2f"
+    },
+    {
+      "file": "surge/cryptominers-domain.list",
+      "entries": 296,
+      "note": "",
+      "bytes": 9353,
+      "sha256": "f6f89a43184b845002f669722a75c25699113e9534ce0ad1cea8c6ecdac4a003"
+    },
+    {
+      "file": "surge/cryptominers-domainset.txt",
+      "entries": 296,
+      "note": "",
+      "bytes": 5499,
+      "sha256": "79427ae7637e7f2d4323a60c321d62d0068d48edbcbaba20a5423401fcfca577"
+    },
+    {
+      "file": "surge/ir-cdn-ip.list",
+      "entries": 262,
+      "note": "",
+      "bytes": 9645,
+      "sha256": "f2d97cf2a7eed8ff2c08711cb41a3070e86184d4e6b345bf8bd84c70af697b7a"
+    },
+    {
+      "file": "surge/ir-domain.list",
+      "entries": 57598,
+      "note": "",
+      "bytes": 1650583,
+      "sha256": "eb63803d496ea8b8af3b61a58d832513df769dafbdcc2b4a3352ef4da116ec79"
+    },
+    {
+      "file": "surge/ir-domainset.txt",
+      "entries": 57598,
+      "note": "",
+      "bytes": 901803,
+      "sha256": "98f25c948a6c19cc5a756e1e100bd97c4029e37d3cb0b8812c61da9339d4db6c"
+    },
+    {
+      "file": "surge/ir-full-ip.list",
+      "entries": 2627,
+      "note": "",
+      "bytes": 92021,
+      "sha256": "e347d19d15155485e6d961dc23aff83182249290b1a34b78e023514198834a3b"
+    },
+    {
+      "file": "surge/ir-ip.list",
+      "entries": 2554,
+      "note": "",
+      "bytes": 89298,
+      "sha256": "2aff4724e2c7bc15b237c4712052c1724ca03fefc41c494ab6ffb6b4c65ad568"
+    },
+    {
+      "file": "surge/malware-domainset.txt",
+      "entries": 171420,
+      "note": "",
+      "bytes": 3312089,
+      "sha256": "324bf4a8ea1e1e061c83e001491f74a3d5d7fbc9696b09be8c166c41d5ed1746"
+    },
+    {
+      "file": "surge/malware-ip.list",
+      "entries": 29277,
+      "note": "",
+      "bytes": 1061894,
+      "sha256": "55abf7e6ec923bc5acad9d9cc1f529e976ca4d023077e46c613636986722192f"
+    },
+    {
+      "file": "surge/nsfw-domain.list",
+      "entries": 52052,
+      "note": "",
+      "bytes": 1539770,
+      "sha256": "baa91fa0acaa0121cc31571c4fe0cbd2ad9d60f66f696e02f1bad7af74383511"
+    },
+    {
+      "file": "surge/nsfw-domainset.txt",
+      "entries": 52052,
+      "note": "",
+      "bytes": 863088,
+      "sha256": "362a976947662be71085420e9c76bf7b22ab6e280712fb26b077cfd949d9e789"
+    },
+    {
+      "file": "surge/phishing-domainset.txt",
+      "entries": 106818,
+      "note": "",
+      "bytes": 2184255,
+      "sha256": "9d3e4afdb2df429bcea5bd909bbe60b83ec538a75ad1eebc18f5d00fafc78810"
+    },
+    {
+      "file": "surge/phishing-ip.list",
+      "entries": 0,
+      "note": "",
+      "bytes": 204,
+      "sha256": "c9238241307f14c9dc1cc5257ff32689eeb206cda87d377cc24b2921c7b074f0"
+    },
+    {
+      "file": "surge/private-domain.list",
+      "entries": 135,
+      "note": "",
+      "bytes": 4566,
+      "sha256": "19dd1af73569632a92340fb474ca067dd741f1460516c3a358c572d10a90832e"
+    },
+    {
+      "file": "surge/private-domainset.txt",
+      "entries": 135,
+      "note": "",
+      "bytes": 2889,
+      "sha256": "3d61b595c6c5c919d536a9a246cc372ea8d6ad8934c73eed835f331779807a61"
+    },
+    {
+      "file": "surge/private-ip.list",
+      "entries": 18,
+      "note": "",
+      "bytes": 803,
+      "sha256": "6840a743ddab73cc4235ba0385531171c861cecbf3dd9668403396fd4fafcf44"
+    },
+    {
+      "file": "text/ads-domains.txt",
+      "entries": 80332,
+      "note": "",
+      "bytes": 1766517,
+      "sha256": "868536345f3e20e8967b943e4566665d1a8653e893613405aaf09d5c6c618344"
+    },
+    {
+      "file": "text/ads-ir-domains.txt",
+      "entries": 290,
+      "note": "",
+      "bytes": 4657,
+      "sha256": "853d3e071ff41b0088d8780bb7c6f8df393cb512cae04c9cebd99f0c9ce0f51f"
+    },
+    {
+      "file": "text/block-all-domains.txt",
+      "entries": 295349,
+      "note": "",
+      "bytes": 5776709,
+      "sha256": "1f558b51263e4e604c30dc0c9c9e7e0c7fbf8943d0d4b86ca78bc7b724ce9497"
+    },
+    {
+      "file": "text/cryptominers-domains.txt",
+      "entries": 296,
+      "note": "",
+      "bytes": 5194,
+      "sha256": "7f6cb711fa71d7746c2ce0325e0658c290ec9bda486c89ab8eb8ee07c45cdbbe"
+    },
+    {
+      "file": "text/ir-all.txt",
+      "entries": 2554,
+      "note": "",
+      "bytes": 40118,
+      "sha256": "fbd5e559033c06c69a24445b717a8ff3f417593261083bcafb11af08c081684d"
+    },
+    {
+      "file": "text/ir-cdn-all.txt",
+      "entries": 262,
+      "note": "",
+      "bytes": 4623,
+      "sha256": "04a67f9c685bb1be962901cfe02df29e0746ff830a6ccaa86a786238d48ef2ec"
+    },
+    {
+      "file": "text/ir-cdn-ipv4.txt",
+      "entries": 232,
+      "note": "",
+      "bytes": 4095,
+      "sha256": "f9e11617647f33527e3fbfd9e05cd6d430766cf32865f2ee4d0b0f83ab785dfe"
+    },
+    {
+      "file": "text/ir-cdn-ipv6.txt",
+      "entries": 30,
+      "note": "",
+      "bytes": 852,
+      "sha256": "4a82970c3281d2da4944a84590812a3bc02467b9c7fae1ff71fdf579174e9885"
+    },
+    {
+      "file": "text/ir-domains.txt",
+      "entries": 57598,
+      "note": "",
+      "bytes": 844196,
+      "sha256": "516f7a1ca33baf38cd54d6c10b57fd06704536b5d784a2c95d378c0870363420"
+    },
+    {
+      "file": "text/ir-full-all.txt",
+      "entries": 2627,
+      "note": "",
+      "bytes": 41452,
+      "sha256": "2633e043aa1b5cfecc98c4b3851e4453f2f9b6619921cea399d2f9c72dff1879"
+    },
+    {
+      "file": "text/ir-full-ipv4.txt",
+      "entries": 1985,
+      "note": "",
+      "bytes": 31578,
+      "sha256": "0253f05a693b33d3304b58f77d4c3ec133c583bcb10d00b3eb46985a289c97f6"
+    },
+    {
+      "file": "text/ir-full-ipv6.txt",
+      "entries": 642,
+      "note": "",
+      "bytes": 10300,
+      "sha256": "e7062b2577e5ad8fc5690570b3651f389b2f1bd1a37ee5dc011f18d7a5ba743b"
+    },
+    {
+      "file": "text/ir-ipv4.txt",
+      "entries": 1914,
+      "note": "",
+      "bytes": 30285,
+      "sha256": "7b5d16dccca3b19b0f8e95468e40ee894c3ad1e8716332fc0385857cbaa0ca1d"
+    },
+    {
+      "file": "text/ir-ipv6.txt",
+      "entries": 640,
+      "note": "",
+      "bytes": 10158,
+      "sha256": "9efc3faa97b36e6dbac1ee94699fd5a662804beaa1f0d42a8d6f3ffebe907751"
+    },
+    {
+      "file": "text/malware-all.txt",
+      "entries": 29277,
+      "note": "",
+      "bytes": 505617,
+      "sha256": "2e560ee973eede0defbe0da5370d99bd961fbffb921f57dad75d877fbcdea1b0"
+    },
+    {
+      "file": "text/malware-domains.txt",
+      "entries": 171420,
+      "note": "",
+      "bytes": 3140660,
+      "sha256": "a4122e28a2bf9d238baffbab34d804f848cb03cda93288a2523a7dc756d69dde"
+    },
+    {
+      "file": "text/malware-ipv4.txt",
+      "entries": 29277,
+      "note": "",
+      "bytes": 505618,
+      "sha256": "72a59d52698175c02fa1973f8298d329bcf7b9f25681b9364e129aa3718361c5"
+    },
+    {
+      "file": "text/nsfw-domains.txt",
+      "entries": 52052,
+      "note": "",
+      "bytes": 811027,
+      "sha256": "633a8de49686358985bfdebdde840c132a0251e4566b9207cfe3995de846daed"
+    },
+    {
+      "file": "text/phishing-all.txt",
+      "entries": 0,
+      "note": "",
+      "bytes": 190,
+      "sha256": "096251ebc3992945df04588f76d0fc944ad5f54a1d723dd149ede13976c2ce2b"
+    },
+    {
+      "file": "text/phishing-domains.txt",
+      "entries": 106818,
+      "note": "",
+      "bytes": 2077428,
+      "sha256": "a10a967b0b6ad0226eb956274bd1490dd41e84455c7349da34d4cfb5748bbba7"
+    },
+    {
+      "file": "text/private-all.txt",
+      "entries": 18,
+      "note": "",
+      "bytes": 443,
+      "sha256": "2d141ede54be1e8048e6cc467523c25d76333b5ae5a207f4cf405965e772913a"
+    },
+    {
+      "file": "text/private-domains.txt",
+      "entries": 135,
+      "note": "",
+      "bytes": 2759,
+      "sha256": "17804c20af1f94bc297b8e2db1c6208b6d80392422f9356cf6f867c67dfb366c"
+    },
+    {
+      "file": "text/private-ipv4.txt",
+      "entries": 14,
+      "note": "",
+      "bytes": 409,
+      "sha256": "5c2701e127c66970a2272ddd92fb0a2aaf83caca8cc444e7ffdded9cd639e97f"
+    },
+    {
+      "file": "text/private-ipv6.txt",
+      "entries": 4,
+      "note": "",
+      "bytes": 254,
+      "sha256": "020b6281de3c41e33eac3bdd22ca4a2dce37b365ca77df7b542381b1e6752260"
+    },
+    {
+      "file": "unbound/ads-block.conf",
+      "entries": 80332,
+      "note": "",
+      "bytes": 4417496,
+      "sha256": "47562a13a1e5ba570b5fcbb3eac4d51fcb3df4b41ca993a80dfaef32d5d12189"
+    },
+    {
+      "file": "unbound/ads-ir-block.conf",
+      "entries": 290,
+      "note": "",
+      "bytes": 14250,
+      "sha256": "cdd6b269a59c32504cecd836264bdfc47a7a9147c2475b3bc1e87dda271b699a"
+    },
+    {
+      "file": "unbound/cryptominers-block.conf",
+      "entries": 296,
+      "note": "",
+      "bytes": 14985,
+      "sha256": "e3bf667b076bb8369712f9aef81db32bc157f05155c4a40f85be4dbb60b289a9"
+    },
+    {
+      "file": "unbound/ir-route.conf",
+      "entries": 57598,
+      "note": "",
+      "bytes": 4127314,
+      "sha256": "ef8add26ad75ef0155b11017f54b85164318026ed98c304cc4622af5abd1271e"
+    },
+    {
+      "file": "unbound/nsfw-block.conf",
+      "entries": 52052,
+      "note": "",
+      "bytes": 2528766,
+      "sha256": "8a3b7c3fc716d6319f2f514c922eb6c73974597cac1e72f889b51c55e9de9a94"
+    },
+    {
+      "file": "wireguard/ir-allowedips.conf",
+      "entries": 2554,
+      "note": "",
+      "bytes": 42696,
+      "sha256": "9cd442e7d1336359f1f80c61047b2ecb7071d8cf372d36a6fe603eb875647cfb"
+    },
+    {
+      "file": "wireguard/ir-cdn-allowedips.conf",
+      "entries": 262,
+      "note": "",
+      "bytes": 4909,
+      "sha256": "d49fe0cb09755c55ede397fbcc5be6c1a34009ef5ef5687ca6518effceb79029"
+    },
+    {
+      "file": "wireguard/ir-exclude-allowedips.conf",
+      "entries": 8473,
+      "note": "",
+      "bytes": 138376,
+      "sha256": "08d6872fe59162fe0135591bb18f2af35d47ad217b54e5fe4d6fb12d96f77595"
+    },
+    {
+      "file": "wireguard/ir-full-allowedips.conf",
+      "entries": 2627,
+      "note": "",
+      "bytes": 44103,
+      "sha256": "ad6ef80b11db722b5a9bae2f9af7fe1393b3ae221a9d7f15a827e57b1715286b"
+    },
+    {
+      "file": "wireguard/ir-full-exclude-allowedips.conf",
+      "entries": 9280,
+      "note": "",
+      "bytes": 152059,
+      "sha256": "2ada695e8695782a68bc113a6edf2f68f8a6b6532501e5d43495fc06939c1947"
+    },
+    {
+      "file": "wireguard/malware-allowedips.conf",
+      "entries": 29277,
+      "note": "",
+      "bytes": 534918,
+      "sha256": "bac1de996f424c61e8dbc0de495cf5c52ed40ae8ba0484482acdc705b483458c"
+    },
+    {
+      "file": "wireguard/phishing-allowedips.conf",
+      "entries": 0,
+      "note": "",
+      "bytes": 216,
+      "sha256": "16f272877cdb91fa9ede2474ab53617a66c645ef64e9c50f448b3983181d89d5"
+    },
+    {
+      "file": "wireguard/private-allowedips.conf",
+      "entries": 18,
+      "note": "",
+      "bytes": 485,
+      "sha256": "299fb63ed8818d312884a898ec1e6e959197232e1db162a85c30b0d1fe449385"
+    },
+    {
+      "file": "xray/geoip-lite.dat",
+      "entries": 5461,
+      "note": "",
+      "bytes": 70446,
+      "sha256": "8bfa97096c4d2978d152044ab80ef98889f52cb84be12e3a31138664b1c5a275"
+    },
+    {
+      "file": "xray/geoip.dat",
+      "entries": 34738,
+      "note": "",
+      "bytes": 363241,
+      "sha256": "a142388004be0b1d10ee3ade462d8adbea6bc9f1830fe1d3e7b115268cf9d07a"
+    },
+    {
+      "file": "xray/geosite-lite.dat",
+      "entries": 115623,
+      "note": "",
+      "bytes": 2273055,
+      "sha256": "7d21b187e787a8b8d1f192aad05ef7735714d57736ff1ea6ae3cdd93939a4f5a"
+    },
+    {
+      "file": "xray/geosite-security.dat",
+      "entries": 439198,
+      "note": "",
+      "bytes": 10951200,
+      "sha256": "68f935d57628d073fe2cff2df05b8c2548caa8807d38fc209251f50db482cbaa"
+    },
+    {
+      "file": "xray/geosite.dat",
+      "entries": 607163,
+      "note": "",
+      "bytes": 14301216,
+      "sha256": "3cbad57679c83861b07d889610ef629e7778fb544824083ec18fa278f8b24b10"
+    },
+    {
+      "file": "xray/routing-rules.json",
+      "entries": 4,
+      "note": "",
+      "bytes": 865,
+      "sha256": "5b20c17677cd9091b7eecb7634965965f62343b9fed2b2c08e0853f3be76cbf1"
+    }
+  ]
+}
