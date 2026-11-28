@@ -1,0 +1,13 @@
+{
+  "attribution": "",
+  "bytes": 18147168,
+  "entries": 3416,
+  "etag": "\"6b0a0e39-114e760\"",
+  "homepage": "https://www.nro.net/about/rirs/statistics/",
+  "invalid": 0,
+  "last_modified": "Fri, 27 Nov 2026 23:11:53 GMT",
+  "license": "Registry public data",
+  "sha256": "f0eed957414f45e1560c4113694cdd1aebd5a49e7e283c51c54db8f2e7747e99",
+  "url_used": "https://ftp.ripe.net/pub/stats/ripencc/delegated-ripencc-extended-latest",
+  "validated_at": "2026-11-28T12:07:48Z"
+}

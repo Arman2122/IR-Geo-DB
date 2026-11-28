@@ -1,0 +1,13 @@
+{
+  "attribution": "",
+  "bytes": 12940903,
+  "entries": 0,
+  "etag": "\"6b098cfc-c57667\"",
+  "homepage": "https://www.nro.net/about/rirs/statistics/",
+  "invalid": 0,
+  "last_modified": "Fri, 27 Nov 2026 14:00:28 GMT",
+  "license": "Registry public data",
+  "sha256": "eced9f9b54eaa6b8b7aff85a2cdb6d655add026859a8ed509fc44ddc50895492",
+  "url_used": "https://ftp.arin.net/pub/stats/arin/delegated-arin-extended-latest",
+  "validated_at": "2026-11-28T12:07:48Z"
+}

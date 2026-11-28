@@ -1,0 +1,13 @@
+{
+  "attribution": "",
+  "bytes": 4592431,
+  "entries": 0,
+  "etag": "\"46132f-6614d683d75b8\"",
+  "homepage": "https://www.nro.net/about/rirs/statistics/",
+  "invalid": 0,
+  "last_modified": "Sat, 28 Nov 2026 03:02:29 GMT",
+  "license": "Registry public data",
+  "sha256": "44c01fca9495674e2a35e942851b0af5c78ea8b1fe80252953be6f68baa9bee3",
+  "url_used": "https://ftp.lacnic.net/pub/stats/lacnic/delegated-lacnic-extended-latest",
+  "validated_at": "2026-11-28T12:07:48Z"
+}

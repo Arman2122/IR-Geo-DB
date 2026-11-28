@@ -1,0 +1,13 @@
+{
+  "attribution": "",
+  "bytes": 508428,
+  "entries": 35627,
+  "etag": "W/\"c34228cb8a64311477df3a35a728b0404e033bfe4d84a0fac5c8ad691d37570e\"",
+  "homepage": "https://github.com/hagezi/dns-blocklists",
+  "invalid": 0,
+  "last_modified": "",
+  "license": "GPL-3.0",
+  "sha256": "1ecc35a19809805a456aa6c34a0ab6765df0a29f637278c8124de90a405caee0",
+  "url_used": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/ips/tif.txt",
+  "validated_at": "2026-11-28T12:07:48Z"
+}
